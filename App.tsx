@@ -12,7 +12,7 @@ import ShareModal from './src/components/ShareModal';
 import SettingsScreen from './src/screens/SettingsScreen';
 import ClipboardBanner from './src/components/ClipboardBanner';
 import { useShareIntent } from './src/hooks/useShareIntent';
-import { setPlaceData } from './modules/share-intent';
+import { setPlaceData, setUserSession } from './modules/share-intent';
 import type { Place } from './src/types';
 
 function extractPlaceIdFromUrl(url: string): string | null {
@@ -29,6 +29,7 @@ export default function App() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showShare, setShowShare] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const pendingShareUrlRef = useRef<string | null>(null);
 
   const handleSignOut = useCallback(async () => {
     await supabase.auth.signOut();
@@ -57,6 +58,14 @@ export default function App() {
 
   useEffect(() => { loadPlaces(); }, [loadPlaces]);
 
+  // Share Extensionが使えるようにセッション情報をApp Groupに書き込む
+  useEffect(() => {
+    if (sessionId) {
+      const apiUrl = process.env.EXPO_PUBLIC_API_URL ?? '';
+      setUserSession(sessionId, apiUrl).catch(() => {});
+    }
+  }, [sessionId]);
+
   useEffect(() => {
     const ids = places.map((p) => p.place_id).filter((id): id is string => !!id);
     const urls = places.map((p) => p.url).filter((u): u is string => !!u);
@@ -77,7 +86,11 @@ export default function App() {
 
   // クリップボードURLを受け取って場所追加
   const handleClipboardUrl = useCallback(async (url: string) => {
-    if (!sessionId) return;
+    if (!sessionId) {
+      // Session not loaded yet (cold launch race) — save and retry when ready
+      pendingShareUrlRef.current = url;
+      return;
+    }
     const extractedPlaceId = extractPlaceIdFromUrl(url);
     const isDuplicate =
       places.some((p) => p.url === url) ||
@@ -99,6 +112,15 @@ export default function App() {
 
   // Share Extension / Android インテント経由で受け取ったURLを処理
   useShareIntent(handleClipboardUrl);
+
+  // Cold-launch race fix: process any URL that arrived before session was ready
+  useEffect(() => {
+    if (sessionId && pendingShareUrlRef.current) {
+      const url = pendingShareUrlRef.current;
+      pendingShareUrlRef.current = null;
+      handleClipboardUrl(url);
+    }
+  }, [sessionId, handleClipboardUrl]);
 
   const selectedPlaces = places.filter((p) => selectedIds.has(p.id));
 

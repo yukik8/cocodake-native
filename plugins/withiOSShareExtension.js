@@ -163,15 +163,134 @@ class ShareViewController: UIViewController {
   }
 
   @objc private func didTapAdd() {
-    if let url = pendingUrl {
-      UserDefaults(suiteName: appGroupId)?.set(url, forKey: "pendingShareUrl")
-      UserDefaults(suiteName: appGroupId)?.synchronize()
+    guard let url = pendingUrl else { complete(); return }
+    let defaults = UserDefaults(suiteName: appGroupId)
+    guard let userId = defaults?.string(forKey: "userId"), !userId.isEmpty,
+          let apiUrl  = defaults?.string(forKey: "apiUrl"),  !apiUrl.isEmpty else {
+      showLoginRequired()
+      return
     }
-    complete()
+    showLoading()
+    callAddPlace(url: url, userId: userId, apiUrl: apiUrl)
   }
 
   @objc private func didTapCancel() {
     complete()
+  }
+
+  private func callAddPlace(url: String, userId: String, apiUrl: String) {
+    guard let endpoint = URL(string: "\\(apiUrl)/api/places/add") else {
+      showApiError("APIのURLが無効です")
+      return
+    }
+    var req = URLRequest(url: endpoint)
+    req.httpMethod = "POST"
+    req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    req.timeoutInterval = 15
+    req.httpBody = try? JSONSerialization.data(withJSONObject: ["url": url, "session": userId])
+    URLSession.shared.dataTask(with: req) { [weak self] data, response, error in
+      DispatchQueue.main.async {
+        guard let self else { return }
+        if let error = error { self.showApiError(error.localizedDescription); return }
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        if status == 409 {
+          self.showAlreadyExists()
+        } else if (200..<300).contains(status) {
+          self.showAdded()
+        } else {
+          let msg = data
+            .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+            .flatMap { $0["error"] as? String } ?? "エラー \\(status)"
+          self.showApiError(msg)
+        }
+      }
+    }.resume()
+  }
+
+  private func showAdded() {
+    view.subviews.forEach { $0.removeFromSuperview() }
+    let checkView = UIImageView(image: UIImage(systemName: "checkmark.circle.fill"))
+    checkView.tintColor = UIColor(red: 0.145, green: 0.388, blue: 0.925, alpha: 1)
+    checkView.contentMode = .scaleAspectFit
+    checkView.translatesAutoresizingMaskIntoConstraints = false
+    let label = makeLabel("リストに追加しました", font: .systemFont(ofSize: 15, weight: .semibold), color: .label)
+    label.textAlignment = .center
+    view.addSubview(checkView)
+    view.addSubview(label)
+    NSLayoutConstraint.activate([
+      checkView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+      checkView.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: -20),
+      checkView.widthAnchor.constraint(equalToConstant: 50),
+      checkView.heightAnchor.constraint(equalToConstant: 50),
+      label.topAnchor.constraint(equalTo: checkView.bottomAnchor, constant: 12),
+      label.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+    ])
+    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in self?.complete() }
+  }
+
+  private func showAlreadyExists() {
+    view.subviews.forEach { $0.removeFromSuperview() }
+    let badge = makeLabel("すでにリストにあります", font: .systemFont(ofSize: 14), color: .secondaryLabel)
+    badge.textAlignment = .center
+    let closeButton = makeRoundedButton("閉じる", background: .secondarySystemBackground, foreground: .label)
+    closeButton.addTarget(self, action: #selector(didTapCancel), for: .touchUpInside)
+    [badge, closeButton].forEach { view.addSubview($0) }
+    NSLayoutConstraint.activate([
+      badge.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+      badge.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: -30),
+      closeButton.topAnchor.constraint(equalTo: badge.bottomAnchor, constant: 24),
+      closeButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+      closeButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+      closeButton.heightAnchor.constraint(equalToConstant: 50),
+    ])
+  }
+
+  private func showLoginRequired() {
+    view.subviews.forEach { $0.removeFromSuperview() }
+    let label = makeLabel("cocodakeにログインしてから\\nお試しください", font: .systemFont(ofSize: 15), color: .label)
+    label.textAlignment = .center
+    label.numberOfLines = 2
+    let closeButton = makeRoundedButton("閉じる", background: .secondarySystemBackground, foreground: .label)
+    closeButton.addTarget(self, action: #selector(didTapCancel), for: .touchUpInside)
+    [label, closeButton].forEach { view.addSubview($0) }
+    NSLayoutConstraint.activate([
+      label.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+      label.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: -30),
+      label.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+      label.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+      closeButton.topAnchor.constraint(equalTo: label.bottomAnchor, constant: 24),
+      closeButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+      closeButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+      closeButton.heightAnchor.constraint(equalToConstant: 50),
+    ])
+  }
+
+  private func showApiError(_ message: String) {
+    view.subviews.forEach { $0.removeFromSuperview() }
+    let iconView = UIImageView(image: UIImage(systemName: "exclamationmark.circle.fill"))
+    iconView.tintColor = .systemGray3
+    iconView.contentMode = .scaleAspectFit
+    iconView.translatesAutoresizingMaskIntoConstraints = false
+    let label = makeLabel(message, font: .systemFont(ofSize: 13), color: .secondaryLabel)
+    label.textAlignment = .center
+    label.numberOfLines = 3
+    let closeButton = makeRoundedButton("閉じる", background: .secondarySystemBackground, foreground: .label)
+    closeButton.addTarget(self, action: #selector(didTapCancel), for: .touchUpInside)
+    [iconView, label, closeButton].forEach { view.addSubview($0) }
+    let guide = view.safeAreaLayoutGuide
+    NSLayoutConstraint.activate([
+      iconView.topAnchor.constraint(equalTo: guide.topAnchor, constant: 40),
+      iconView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+      iconView.widthAnchor.constraint(equalToConstant: 40),
+      iconView.heightAnchor.constraint(equalToConstant: 40),
+      label.topAnchor.constraint(equalTo: iconView.bottomAnchor, constant: 12),
+      label.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
+      label.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
+      closeButton.topAnchor.constraint(equalTo: label.bottomAnchor, constant: 24),
+      closeButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+      closeButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+      closeButton.heightAnchor.constraint(equalToConstant: 50),
+    ])
   }
 
   private func extractSharedUrl(completion: @escaping (String?) -> Void) {

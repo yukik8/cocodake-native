@@ -16,6 +16,13 @@ public class ShareIntentModule: Module {
       return url
     }
 
+    AsyncFunction("setUserSession") { (userId: String, apiUrl: String) in
+      guard let defaults = UserDefaults(suiteName: self.appGroupId) else { return }
+      defaults.set(userId, forKey: "userId")
+      defaults.set(apiUrl, forKey: "apiUrl")
+      defaults.synchronize()
+    }
+
     AsyncFunction("setPlaceData") { (ids: [String], urls: [String]) in
       guard let defaults = UserDefaults(suiteName: self.appGroupId) else { return }
       defaults.set(ids, forKey: "cachedPlaceIds")
