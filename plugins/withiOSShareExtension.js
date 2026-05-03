@@ -368,6 +368,10 @@ function withShareExtensionTarget(config) {
           cfg.buildSettings['CODE_SIGN_IDENTITY'] = '"Apple Distribution"';
           cfg.buildSettings['CODE_SIGN_ENTITLEMENTS'] =
             '"ShareExtension/ShareExtension.entitlements"';
+          cfg.buildSettings['PROVISIONING_PROFILE'] =
+            '"405c532c-d31d-4936-a0e6-44ff2f305f19"';
+          cfg.buildSettings['PROVISIONING_PROFILE_SPECIFIER'] =
+            '"*[expo] com.cocodake.app.ShareExtension AdHoc 1777772563470"';
         });
       }
       return config;
@@ -441,6 +445,10 @@ function withShareExtensionTarget(config) {
         cfg.buildSettings['CODE_SIGN_IDENTITY'] = '"Apple Distribution"';
         cfg.buildSettings['CODE_SIGN_ENTITLEMENTS'] =
           '"ShareExtension/ShareExtension.entitlements"';
+        cfg.buildSettings['PROVISIONING_PROFILE'] =
+          '"405c532c-d31d-4936-a0e6-44ff2f305f19"';
+        cfg.buildSettings['PROVISIONING_PROFILE_SPECIFIER'] =
+          '"*[expo] com.cocodake.app.ShareExtension AdHoc 1777772563470"';
       });
     }
 
