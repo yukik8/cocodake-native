@@ -531,9 +531,9 @@ fi
           cfg.buildSettings['CODE_SIGN_ENTITLEMENTS'] =
             '"ShareExtension/ShareExtension.entitlements"';
           cfg.buildSettings['PROVISIONING_PROFILE'] =
-            '"405c532c-d31d-4936-a0e6-44ff2f305f19"';
+            '"9c761d1a-c8b9-440c-adcb-67eab659305b"';
           cfg.buildSettings['PROVISIONING_PROFILE_SPECIFIER'] =
-            '"*[expo] com.cocodake.app.ShareExtension AdHoc 1777772563470"';
+            '"*[expo] com.cocodake.app.ShareExtension AppStore 2026-05-03T13:41:47.617Z"';
         });
       }
       return config;
@@ -633,9 +633,9 @@ fi
         cfg.buildSettings['CODE_SIGN_ENTITLEMENTS'] =
           '"ShareExtension/ShareExtension.entitlements"';
         cfg.buildSettings['PROVISIONING_PROFILE'] =
-          '"405c532c-d31d-4936-a0e6-44ff2f305f19"';
+          '"9c761d1a-c8b9-440c-adcb-67eab659305b"';
         cfg.buildSettings['PROVISIONING_PROFILE_SPECIFIER'] =
-          '"*[expo] com.cocodake.app.ShareExtension AdHoc 1777772563470"';
+          '"*[expo] com.cocodake.app.ShareExtension AppStore 2026-05-03T13:41:47.617Z"';
       });
     }
 
