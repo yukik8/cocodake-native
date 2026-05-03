@@ -1,0 +1,11 @@
+{
+  "platforms": ["ios", "android"],
+  "ios": {
+    "podspecPath": "ShareIntent.podspec",
+    "swiftModuleName": "ShareIntent",
+    "modules": ["ShareIntentModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.shareintent.ShareIntentModule"]
+  }
+}

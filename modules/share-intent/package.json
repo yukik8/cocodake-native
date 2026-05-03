@@ -1,0 +1,6 @@
+{
+  "name": "share-intent",
+  "version": "1.0.0",
+  "description": "Share Intent native module for MapShare",
+  "main": "index.ts"
+}
