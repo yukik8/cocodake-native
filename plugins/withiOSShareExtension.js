@@ -163,7 +163,8 @@ class ShareViewController: UIViewController {
   }
 
   @objc private func didTapAdd() {
-    guard let url = pendingUrl else { complete(); return }
+    let trimmedUrl = pendingUrl?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    guard !trimmedUrl.isEmpty else { showApiError("URL: empty (raw: \\(pendingUrl ?? "nil"))"); return }
     let defaults = UserDefaults(suiteName: appGroupId)
     guard let userId = defaults?.string(forKey: "userId"), !userId.isEmpty,
           let apiUrl  = defaults?.string(forKey: "apiUrl"),  !apiUrl.isEmpty else {
@@ -171,7 +172,7 @@ class ShareViewController: UIViewController {
       return
     }
     showLoading()
-    callAddPlace(url: url, userId: userId, apiUrl: apiUrl)
+    callAddPlace(url: trimmedUrl, userId: userId, apiUrl: apiUrl)
   }
 
   @objc private func didTapCancel() {
