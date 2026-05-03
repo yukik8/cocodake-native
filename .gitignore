@@ -38,6 +38,9 @@ yarn-error.*
 credentials/
 credentials.json
 
+# EAS build hooks (must be committed)
+!eas-build-post-install.sh
+
 # typescript
 *.tsbuildinfo
 
