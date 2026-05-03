@@ -3,7 +3,7 @@ import Supercluster from 'supercluster';
 import {
   StyleSheet, View, Text, TouchableOpacity,
   TextInput, FlatList, ActivityIndicator,
-  Image, Linking,
+  Image, Linking, Keyboard,
   type NativeSyntheticEvent,
 } from 'react-native';
 import {
@@ -51,7 +51,16 @@ export default function MapScreen({
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [searchFocused, setSearchFocused] = useState(false);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchInputRef = useRef<TextInput>(null);
+
+  const handleSearchCancel = useCallback(() => {
+    setSearchQuery('');
+    setSearchResults([]);
+    setSearchFocused(false);
+    Keyboard.dismiss();
+  }, []);
 
   // タッププレビュー
   const [preview, setPreview] = useState<(PreviewResult & { loading: boolean; saving: boolean; isExisting?: boolean; existingId?: string; note?: string | null }) | null>(null);
@@ -154,6 +163,7 @@ export default function MapScreen({
     const lng = lngLat[0];
     const lat = lngLat[1];
 
+    Keyboard.dismiss();
     setPreview({ lat, lng, name: null, address: null, category: null, rating: null, photo_url: null, place_id: null, loading: true, saving: false });
     setSearchResults([]);
 
@@ -241,6 +251,7 @@ export default function MapScreen({
   }, []);
 
   const handleSearchSelect = useCallback(async (result: SearchResult) => {
+    Keyboard.dismiss();
     setSearchQuery('');
     setSearchResults([]);
     cameraRef.current?.flyTo({
@@ -362,6 +373,7 @@ export default function MapScreen({
         mapStyle={STYLE_URL}
         onPress={selectionMode ? undefined : handleMapPress}
         onRegionDidChange={async (e) => {
+          Keyboard.dismiss();
           if (selectionMode) { countInBounds(); return; }
           const bounds = await mapRef.current?.getBounds();
           const zoom = await mapRef.current?.getZoom();
@@ -462,16 +474,26 @@ export default function MapScreen({
 
       {/* 検索バー */}
       <View style={styles.searchContainer}>
-        <View style={styles.searchBar}>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="場所を検索..."
-            value={searchQuery}
-            onChangeText={handleSearch}
-            returnKeyType="search"
-            clearButtonMode="while-editing"
-          />
-          {searchLoading && <ActivityIndicator size="small" color="#2563eb" style={styles.searchSpinner} />}
+        <View style={styles.searchRow}>
+          <View style={styles.searchBar}>
+            <TextInput
+              ref={searchInputRef}
+              style={styles.searchInput}
+              placeholder="場所を検索..."
+              value={searchQuery}
+              onChangeText={handleSearch}
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => setSearchFocused(false)}
+              returnKeyType="search"
+              clearButtonMode="while-editing"
+            />
+            {searchLoading && <ActivityIndicator size="small" color="#2563eb" style={styles.searchSpinner} />}
+          </View>
+          {(searchFocused || searchQuery.length > 0) && (
+            <TouchableOpacity onPress={handleSearchCancel} style={styles.searchCancelBtn}>
+              <Text style={styles.searchCancelText}>キャンセル</Text>
+            </TouchableOpacity>
+          )}
         </View>
         {searchResults.length > 0 && (
           <View style={styles.searchDropdown}>
@@ -677,7 +699,13 @@ const styles = StyleSheet.create({
     right: 12,
     zIndex: 10,
   },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   searchBar: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff',
@@ -691,6 +719,8 @@ const styles = StyleSheet.create({
   },
   searchInput: { flex: 1, height: 44, fontSize: 15, color: '#1f2937' },
   searchSpinner: { marginLeft: 8 },
+  searchCancelBtn: { paddingVertical: 8, paddingHorizontal: 4 },
+  searchCancelText: { fontSize: 15, color: '#2563eb', fontWeight: '600' },
   searchDropdown: {
     marginTop: 4,
     backgroundColor: '#fff',
@@ -791,8 +821,8 @@ const styles = StyleSheet.create({
     height: '20%', backgroundColor: 'rgba(0,0,0,0.35)',
   },
   overlayBottom: {
-    position: 'absolute', bottom: 80, left: 0, right: 0,
-    height: '20%', backgroundColor: 'rgba(0,0,0,0.35)',
+    position: 'absolute', top: '80%', bottom: 80, left: 0, right: 0,
+    backgroundColor: 'rgba(0,0,0,0.35)',
   },
   overlayLeft: {
     position: 'absolute', top: '20%', bottom: '20%',

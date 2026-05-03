@@ -29,13 +29,14 @@ class ShareViewController: UIViewController {
         DispatchQueue.main.async { self.showError() }
         return
       }
-      self.pendingUrl = urlString
-      self.resolveUrl(urlString) { [weak self] resolved in
+      let cleanUrl = self.stripTrackingParams(urlString)
+      self.resolveUrl(cleanUrl) { [weak self] resolved in
         guard let self else { return }
+        self.pendingUrl = resolved
         let placeId = self.extractPlaceId(from: resolved)
         let cachedIds = UserDefaults(suiteName: self.appGroupId)?.stringArray(forKey: "cachedPlaceIds") ?? []
         let alreadyAdded = placeId != nil && cachedIds.contains(placeId!)
-        DispatchQueue.main.async { self.setupUI(urlString: urlString, alreadyAdded: alreadyAdded) }
+        DispatchQueue.main.async { self.setupUI(urlString: cleanUrl, alreadyAdded: alreadyAdded) }
       }
     }
   }
@@ -188,7 +189,9 @@ class ShareViewController: UIViewController {
     req.httpMethod = "POST"
     req.setValue("application/json", forHTTPHeaderField: "Content-Type")
     req.timeoutInterval = 15
-    req.httpBody = try? JSONSerialization.data(withJSONObject: ["url": url, "session": userId])
+    var body: [String: String] = ["url": url, "session": userId]
+    if let placeId = extractPlaceId(from: url) { body["place_id"] = placeId }
+    req.httpBody = try? JSONSerialization.data(withJSONObject: body)
     URLSession.shared.dataTask(with: req) { [weak self] data, response, error in
       DispatchQueue.main.async {
         guard let self else { return }
@@ -295,11 +298,10 @@ class ShareViewController: UIViewController {
   }
 
   private func extractSharedUrl(completion: @escaping (String?) -> Void) {
-    guard let item = extensionContext?.inputItems.first as? NSExtensionItem,
-          let attachment = item.attachments?.first else {
-      completion(nil)
-      return
-    }
+    let items = (extensionContext?.inputItems as? [NSExtensionItem]) ?? []
+    let attachments = items.flatMap { $0.attachments ?? [] }
+    guard !attachments.isEmpty else { completion(nil); return }
+
     let urlId: String
     let textId: String
     if #available(iOS 14.0, *) {
@@ -309,35 +311,42 @@ class ShareViewController: UIViewController {
       urlId = kUTTypeURL as String
       textId = kUTTypePlainText as String
     }
-    let loadText = {
-      if attachment.hasItemConformingToTypeIdentifier(textId) {
-        attachment.loadItem(forTypeIdentifier: textId) { data, _ in
-          let s = (data as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+    // URL型を全 attachment から探す（URLが2番目以降に入るアプリ対応）
+    for attachment in attachments {
+      if attachment.hasItemConformingToTypeIdentifier(urlId) {
+        attachment.loadItem(forTypeIdentifier: urlId) { data, _ in
+          let s = ((data as? URL)?.absoluteString ?? data as? String ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
           completion(s.isEmpty ? nil : s)
         }
-      } else {
-        completion(nil)
+        return
       }
     }
-    if attachment.hasItemConformingToTypeIdentifier(urlId) {
-      attachment.loadItem(forTypeIdentifier: urlId) { data, _ in
-        let s = ((data as? URL)?.absoluteString ?? data as? String ?? "")
-          .trimmingCharacters(in: .whitespacesAndNewlines)
-        if s.isEmpty {
-          loadText()  // public.url が空 → plain-text にフォールバック
-        } else {
-          completion(s)
+    // フォールバック: テキスト型から URL を探す
+    for attachment in attachments {
+      if attachment.hasItemConformingToTypeIdentifier(textId) {
+        attachment.loadItem(forTypeIdentifier: textId) { data, _ in
+          let s = (data as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+          completion(s.isEmpty ? nil : s)
         }
+        return
       }
-    } else {
-      loadText()
     }
+    completion(nil)
+  }
+
+  private func stripTrackingParams(_ urlString: String) -> String {
+    guard var comps = URLComponents(string: urlString) else { return urlString }
+    comps.queryItems = comps.queryItems?.filter { $0.name != "g_st" }
+    if comps.queryItems?.isEmpty == true { comps.queryItems = nil }
+    return comps.url?.absoluteString ?? urlString
   }
 
   private func resolveUrl(_ urlString: String, completion: @escaping (String) -> Void) {
     guard let url = URL(string: urlString) else { completion(urlString); return }
     var request = URLRequest(url: url)
-    request.httpMethod = "HEAD"
+    request.httpMethod = "GET"
     request.timeoutInterval = 5
     URLSession.shared.dataTask(with: request) { _, response, _ in
       completion((response as? HTTPURLResponse)?.url?.absoluteString ?? urlString)
