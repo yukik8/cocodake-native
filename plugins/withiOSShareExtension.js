@@ -309,16 +309,28 @@ class ShareViewController: UIViewController {
       urlId = kUTTypeURL as String
       textId = kUTTypePlainText as String
     }
+    let loadText = {
+      if attachment.hasItemConformingToTypeIdentifier(textId) {
+        attachment.loadItem(forTypeIdentifier: textId) { data, _ in
+          let s = (data as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+          completion(s.isEmpty ? nil : s)
+        }
+      } else {
+        completion(nil)
+      }
+    }
     if attachment.hasItemConformingToTypeIdentifier(urlId) {
       attachment.loadItem(forTypeIdentifier: urlId) { data, _ in
-        completion((data as? URL)?.absoluteString ?? data as? String)
-      }
-    } else if attachment.hasItemConformingToTypeIdentifier(textId) {
-      attachment.loadItem(forTypeIdentifier: textId) { data, _ in
-        completion(data as? String)
+        let s = ((data as? URL)?.absoluteString ?? data as? String ?? "")
+          .trimmingCharacters(in: .whitespacesAndNewlines)
+        if s.isEmpty {
+          loadText()  // public.url が空 → plain-text にフォールバック
+        } else {
+          completion(s)
+        }
       }
     } else {
-      completion(nil)
+      loadText()
     }
   }
 
