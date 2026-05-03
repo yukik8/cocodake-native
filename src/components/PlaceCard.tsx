@@ -1,21 +1,31 @@
+import { useState } from 'react';
 import {
   View, Text, Image, TouchableOpacity,
-  ActivityIndicator, StyleSheet,
+  ActivityIndicator, StyleSheet, TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { PreviewResult } from '../lib/api';
 
 interface Props {
-  preview: PreviewResult & { loading: boolean; saving: boolean };
+  preview: PreviewResult & { loading: boolean; saving: boolean; note?: string | null };
   onSave: () => void;
   onSaveAndShare: () => void;
   onClose: () => void;
   isExisting?: boolean;
   onDelete?: () => void;
   hasSelection?: boolean;
+  onNoteChange?: (note: string | null) => void;
 }
 
-export default function PlaceCard({ preview, onSave, onSaveAndShare, onClose, isExisting, onDelete, hasSelection }: Props) {
+export default function PlaceCard({ preview, onSave, onSaveAndShare, onClose, isExisting, onDelete, hasSelection, onNoteChange }: Props) {
+  const [editingNote, setEditingNote] = useState(false);
+  const [noteText, setNoteText] = useState(preview.note ?? '');
+
+  const handleNoteSave = () => {
+    setEditingNote(false);
+    onNoteChange?.(noteText.trim() || null);
+  };
+
   return (
     <View style={styles.card}>
       {preview.loading ? (
@@ -53,6 +63,35 @@ export default function PlaceCard({ preview, onSave, onSaveAndShare, onClose, is
               )}
             </View>
           </View>
+
+          {/* メモ（既存スポットのみ） */}
+          {isExisting && (
+            <View style={styles.noteArea}>
+              {editingNote ? (
+                <View style={styles.noteEditRow}>
+                  <TextInput
+                    style={styles.noteInput}
+                    value={noteText}
+                    onChangeText={setNoteText}
+                    placeholder="メモを入力..."
+                    multiline
+                    autoFocus
+                    placeholderTextColor="#9ca3af"
+                  />
+                  <TouchableOpacity style={styles.noteSaveBtn} onPress={handleNoteSave}>
+                    <Text style={styles.noteSaveBtnText}>保存</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity style={styles.noteReadRow} onPress={() => setEditingNote(true)}>
+                  <Ionicons name="pencil-outline" size={13} color="#9ca3af" />
+                  <Text style={[styles.noteReadText, !noteText && styles.noteReadPlaceholder]} numberOfLines={2}>
+                    {noteText || 'メモを追加...'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
 
           {isExisting ? (
             <View style={styles.actions}>
@@ -112,6 +151,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     padding: 16,
+    paddingBottom: 12,
   },
   photo: { width: 72, height: 72, borderRadius: 12 },
   photoPlaceholder: {
@@ -136,6 +176,45 @@ const styles = StyleSheet.create({
   address: { fontSize: 12, color: '#9ca3af', lineHeight: 16 },
   ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
   rating: { fontSize: 12, color: '#d97706' },
+
+  // メモ
+  noteArea: {
+    marginHorizontal: 16,
+    marginBottom: 10,
+    backgroundColor: '#f9fafb',
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  noteReadRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    padding: 10,
+  },
+  noteReadText: { flex: 1, fontSize: 13, color: '#374151', lineHeight: 18 },
+  noteReadPlaceholder: { color: '#9ca3af' },
+  noteEditRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 8,
+    padding: 10,
+  },
+  noteInput: {
+    flex: 1,
+    fontSize: 13,
+    color: '#111827',
+    lineHeight: 18,
+    minHeight: 40,
+    maxHeight: 80,
+  },
+  noteSaveBtn: {
+    backgroundColor: '#2563eb',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  noteSaveBtnText: { fontSize: 13, fontWeight: '700', color: '#fff' },
+
   actions: {
     flexDirection: 'row',
     borderTopWidth: StyleSheet.hairlineWidth,

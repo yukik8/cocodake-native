@@ -77,6 +77,14 @@ export interface SearchResult {
   lng: number;
 }
 
+export async function updateNote(id: string, note: string | null, session: string): Promise<void> {
+  await apiFetch('/api/places', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, session, note }),
+  });
+}
+
 export async function searchPlaces(q: string, lat?: number, lng?: number): Promise<SearchResult[]> {
   const locParam = lat != null && lng != null ? `&lat=${lat}&lng=${lng}` : '';
   const res = await apiFetch(`/api/search?q=${encodeURIComponent(q)}${locParam}`);

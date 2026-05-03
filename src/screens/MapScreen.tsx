@@ -2,7 +2,7 @@ import { useRef, useState, useCallback, useEffect } from 'react';
 import {
   StyleSheet, View, Text, TouchableOpacity,
   TextInput, FlatList, ActivityIndicator,
-  Image,
+  Image, Linking,
   type NativeSyntheticEvent,
 } from 'react-native';
 import {
@@ -12,7 +12,7 @@ import {
 } from '@maplibre/maplibre-react-native';
 import * as Location from 'expo-location';
 import type { Place } from '../types';
-import { previewByCoords, previewByPlaceId, addPlace, searchPlaces, deletePlace } from '../lib/api';
+import { previewByCoords, previewByPlaceId, addPlace, searchPlaces, deletePlace, updateNote } from '../lib/api';
 import type { PreviewResult, SearchResult } from '../lib/api';
 import PlaceCard from '../components/PlaceCard';
 import Toast from '../components/Toast';
@@ -53,7 +53,7 @@ export default function MapScreen({
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // タッププレビュー
-  const [preview, setPreview] = useState<(PreviewResult & { loading: boolean; saving: boolean; isExisting?: boolean; existingId?: string }) | null>(null);
+  const [preview, setPreview] = useState<(PreviewResult & { loading: boolean; saving: boolean; isExisting?: boolean; existingId?: string; note?: string | null }) | null>(null);
 
   // リストからフォーカスされた場所へ飛ぶ
   useEffect(() => {
@@ -77,6 +77,7 @@ export default function MapScreen({
       saving: false,
       isExisting: true,
       existingId: focusedPlace.id,
+      note: focusedPlace.note,
     });
     onClearFocus?.();
   }, [focusedPlace]);
@@ -179,6 +180,7 @@ export default function MapScreen({
             photo_url: existing.photo_url, place_id: null,
             loading: false, saving: false,
             isExisting: true, existingId: existing.id,
+            note: existing.note,
           });
           return;
         }
@@ -241,6 +243,7 @@ export default function MapScreen({
         photo_url: existing.photo_url, place_id: null,
         loading: false, saving: false,
         isExisting: true, existingId: existing.id,
+        note: existing.note,
       });
       return;
     }
@@ -507,6 +510,10 @@ export default function MapScreen({
           isExisting={preview.isExisting}
           onDelete={preview.existingId ? handleDeleteExisting : undefined}
           hasSelection={selectedIds.size > 0}
+          onNoteChange={preview.existingId ? async (note) => {
+            await updateNote(preview.existingId!, note, sessionId);
+            onPlaceAdded();
+          } : undefined}
         />
       )}
 
@@ -562,6 +569,16 @@ export default function MapScreen({
                     {p.rating ? (
                       <Text style={styles.trayCardRating}>★ {p.rating.toFixed(1)}</Text>
                     ) : null}
+                    {p.note ? (
+                      <Text style={styles.trayCardNote} numberOfLines={2}>{p.note}</Text>
+                    ) : null}
+                    <TouchableOpacity
+                      style={styles.trayCardMapLink}
+                      onPress={() => Linking.openURL(p.url ?? `https://www.google.com/maps?q=${p.lat},${p.lng}`)}
+                    >
+                      <Ionicons name="map-outline" size={11} color="#2563eb" />
+                      <Text style={styles.trayCardMapLinkText}>Google Maps</Text>
+                    </TouchableOpacity>
                   </View>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -822,6 +839,9 @@ const styles = StyleSheet.create({
   trayCardName: { fontSize: 13, fontWeight: '600', color: '#111827' },
   trayCardCategory: { fontSize: 11, color: '#6b7280' },
   trayCardRating: { fontSize: 11, color: '#f59e0b', fontWeight: '600' },
+  trayCardNote: { fontSize: 11, color: '#6b7280', fontStyle: 'italic', marginTop: 2 },
+  trayCardMapLink: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 4 },
+  trayCardMapLinkText: { fontSize: 11, color: '#2563eb', fontWeight: '600' },
   trayCardRemove: {
     position: 'absolute',
     top: 6,

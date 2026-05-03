@@ -175,6 +175,9 @@ function PlaceRow({
               <Text style={styles.rating}>{place.rating}</Text>
             </View>
           )}
+          {place.note ? (
+            <Text style={styles.note} numberOfLines={1}>{place.note}</Text>
+          ) : null}
         </View>
       </TouchableOpacity>
 
@@ -258,6 +261,7 @@ const styles = StyleSheet.create({
   address: { fontSize: 11, color: '#9ca3af', marginTop: 1 },
   ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 },
   rating: { fontSize: 11, color: '#d97706' },
+  note: { fontSize: 11, color: '#6b7280', marginTop: 2, fontStyle: 'italic' },
   deleteBtn: { padding: 4, flexShrink: 0 },
   deleteText: { fontSize: 18 },
   empty: { padding: 40, alignItems: 'center' },
