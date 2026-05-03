@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
-  View, Text, Image, TouchableOpacity,
+  Animated, Text, Image, TouchableOpacity,
   ActivityIndicator, StyleSheet, TextInput,
+  Keyboard, type KeyboardEvent,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { PreviewResult } from '../lib/api';
@@ -20,6 +21,25 @@ interface Props {
 export default function PlaceCard({ preview, onSave, onSaveAndShare, onClose, isExisting, onDelete, hasSelection, onNoteChange }: Props) {
   const [editingNote, setEditingNote] = useState(false);
   const [noteText, setNoteText] = useState(preview.note ?? '');
+  const bottomAnim = useRef(new Animated.Value(24)).current;
+
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardWillShow', (e: KeyboardEvent) => {
+      Animated.timing(bottomAnim, {
+        toValue: 24 + e.endCoordinates.height,
+        duration: e.duration ?? 250,
+        useNativeDriver: false,
+      }).start();
+    });
+    const hide = Keyboard.addListener('keyboardWillHide', (e: KeyboardEvent) => {
+      Animated.timing(bottomAnim, {
+        toValue: 24,
+        duration: e.duration ?? 250,
+        useNativeDriver: false,
+      }).start();
+    });
+    return () => { show.remove(); hide.remove(); };
+  }, [bottomAnim]);
 
   const handleNoteSave = () => {
     setEditingNote(false);
@@ -27,7 +47,7 @@ export default function PlaceCard({ preview, onSave, onSaveAndShare, onClose, is
   };
 
   return (
-    <View style={styles.card}>
+    <Animated.View style={[styles.card, { bottom: bottomAnim }]}>
       {preview.loading ? (
         <View style={styles.loadingRow}>
           <ActivityIndicator size="small" color="#2563eb" />
@@ -121,14 +141,13 @@ export default function PlaceCard({ preview, onSave, onSaveAndShare, onClose, is
           )}
         </>
       )}
-    </View>
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
     position: 'absolute',
-    bottom: 24,
     left: 16,
     right: 16,
     backgroundColor: '#fff',
