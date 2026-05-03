@@ -324,11 +324,17 @@ class ShareViewController: UIViewController {
       }
     }
     // フォールバック: テキスト型から URL を探す
+    // 食べログは「店名\\n電話\\n住所\\nURL」形式のプレーンテキストでシェアするため
+    // テキスト中から URL だけを抽出する
     for attachment in attachments {
       if attachment.hasItemConformingToTypeIdentifier(textId) {
         attachment.loadItem(forTypeIdentifier: textId) { data, _ in
-          let s = (data as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-          completion(s.isEmpty ? nil : s)
+          let text = (data as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+          let words = text.components(separatedBy: .whitespacesAndNewlines)
+          let tabelogUrl = words.first(where: { $0.contains("tabelog.com") && $0.hasPrefix("http") })
+          let anyUrl    = words.first(where: { $0.hasPrefix("https://") || $0.hasPrefix("http://") })
+          let found = tabelogUrl ?? anyUrl
+          completion(found?.isEmpty == false ? found : (text.isEmpty ? nil : text))
         }
         return
       }
