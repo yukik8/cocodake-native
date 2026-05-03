@@ -347,6 +347,21 @@ function withShareExtensionTarget(config) {
     fs.writeFileSync(path.join(extDir, 'Info.plist'), INFO_PLIST, 'utf8');
     fs.writeFileSync(path.join(extDir, 'ShareExtension.entitlements'), ENTITLEMENTS_PLIST, 'utf8');
 
+    // バージョン同期スクリプト（EASが親アプリのInfo.plistを直接書き換えるため、
+    // extensionのInfo.plistにも同じ値をコピーするrun script）
+    const syncScript = `#!/bin/sh
+PARENT="$SRCROOT/cocodake/Info.plist"
+V=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$PARENT" 2>/dev/null)
+if [ -n "$V" ]; then
+  /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $V" "$SRCROOT/$INFOPLIST_FILE"
+fi
+M=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$PARENT" 2>/dev/null)
+if [ -n "$M" ]; then
+  /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $M" "$SRCROOT/$INFOPLIST_FILE"
+fi
+`;
+    fs.writeFileSync(path.join(iosRoot, 'sync-extension-version.sh'), syncScript, { mode: 0o755 });
+
     const existingTarget = xcodeProject.pbxTargetByName(EXTENSION_TARGET_NAME);
 
     // 既存ターゲットでもビルド設定は毎回更新する
@@ -399,6 +414,33 @@ function withShareExtensionTarget(config) {
     // --- 3. Build Phase を先に作成（addTarget は buildPhases を空で作る）---
     // 先に作成しないと addSourceFile が main target の Sources phase に追加してしまう
     xcodeProject.addBuildPhase([], 'PBXSourcesBuildPhase', 'Sources', targetUuid);
+
+    // バージョン同期スクリプト（Resources の前に実行する必要がある）
+    const syncPhaseUuid = xcodeProject.generateUuid();
+    const shellScriptObjects = xcodeProject.hash.project.objects['PBXShellScriptBuildPhase'] =
+      xcodeProject.hash.project.objects['PBXShellScriptBuildPhase'] || {};
+    shellScriptObjects[syncPhaseUuid] = {
+      isa: 'PBXShellScriptBuildPhase',
+      buildActionMask: 2147483647,
+      files: [],
+      inputFileListPaths: [],
+      inputPaths: ['"$(SRCROOT)/cocodake/Info.plist"'],
+      name: '"Sync Version with Parent App"',
+      outputFileListPaths: [],
+      outputPaths: ['"$(SRCROOT)/ShareExtension/Info.plist"'],
+      runOnlyForDeploymentPostprocessing: 0,
+      shellPath: '/bin/sh',
+      shellScript: '"bash \\"$SRCROOT/sync-extension-version.sh\\""',
+    };
+    shellScriptObjects[`${syncPhaseUuid}_comment`] = 'Sync Version with Parent App';
+    const pbxNativeTargets = xcodeProject.hash.project.objects['PBXNativeTarget'];
+    if (pbxNativeTargets[targetUuid]) {
+      pbxNativeTargets[targetUuid].buildPhases.push({
+        value: syncPhaseUuid,
+        comment: 'Sync Version with Parent App',
+      });
+    }
+
     xcodeProject.addBuildPhase([], 'PBXResourcesBuildPhase', 'Resources', targetUuid);
     xcodeProject.addBuildPhase([], 'PBXFrameworksBuildPhase', 'Frameworks', targetUuid);
 
