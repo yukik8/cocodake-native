@@ -4,7 +4,7 @@ const path = require('path');
 const os = require('os');
 
 const PROFILE_UUID = '9c761d1a-c8b9-440c-adcb-67eab659305b';
-const PROFILE_SRC = path.join(__dirname, '../credentials/ios/share-extension-profile.mobileprovision');
+const PROFILE_SRC = path.join(__dirname, 'share-extension-profile.dat');
 
 module.exports = (config) => {
   return withDangerousMod(config, [
