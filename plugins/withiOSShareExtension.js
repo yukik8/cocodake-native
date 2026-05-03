@@ -435,8 +435,6 @@ function withShareExtensionTarget(config) {
         if (!cfg?.buildSettings) return;
         cfg.buildSettings['PRODUCT_BUNDLE_IDENTIFIER'] = EXTENSION_BUNDLE_ID;
         cfg.buildSettings['INFOPLIST_FILE'] = '"ShareExtension/Info.plist"';
-        cfg.buildSettings['MARKETING_VERSION'] = config.version || '1.0.0';
-        cfg.buildSettings['CURRENT_PROJECT_VERSION'] = String(config.ios?.buildNumber ?? '1');
         cfg.buildSettings['SWIFT_VERSION'] = '"5.0"';
         cfg.buildSettings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.1';
         cfg.buildSettings['TARGETED_DEVICE_FAMILY'] = '"1,2"';
