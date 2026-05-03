@@ -21,27 +21,27 @@ class ShareViewController: UIViewController {
 
   override func viewDidLoad() {
     super.viewDidLoad()
+    view.backgroundColor = .systemBackground
+    showLoading()
     extractSharedUrl { [weak self] urlString in
       guard let self else { return }
-      guard let urlString else { self.complete(); return }
+      guard let urlString else {
+        DispatchQueue.main.async { self.showError() }
+        return
+      }
       self.pendingUrl = urlString
-      DispatchQueue.main.async { self.showLoading() }
       self.resolveUrl(urlString) { [weak self] resolved in
         guard let self else { return }
-        let defaults = UserDefaults(suiteName: self.appGroupId)
-        let cachedIds = defaults?.stringArray(forKey: "cachedPlaceIds") ?? []
-        let cachedUrls = defaults?.stringArray(forKey: "cachedPlaceUrls") ?? []
         let placeId = self.extractPlaceId(from: resolved)
-        let alreadyAdded = (placeId != nil && cachedIds.contains(placeId!))
-          || cachedUrls.contains(resolved)
-          || cachedUrls.contains(urlString)
+        let cachedIds = UserDefaults(suiteName: self.appGroupId)?.stringArray(forKey: "cachedPlaceIds") ?? []
+        let alreadyAdded = placeId != nil && cachedIds.contains(placeId!)
         DispatchQueue.main.async { self.setupUI(urlString: urlString, alreadyAdded: alreadyAdded) }
       }
     }
   }
 
   private func showLoading() {
-    view.backgroundColor = .systemBackground
+    view.subviews.forEach { $0.removeFromSuperview() }
     let indicator = UIActivityIndicatorView(style: .medium)
     indicator.translatesAutoresizingMaskIntoConstraints = false
     indicator.startAnimating()
@@ -52,38 +52,58 @@ class ShareViewController: UIViewController {
     ])
   }
 
-  private func resolveUrl(_ urlString: String, completion: @escaping (String) -> Void) {
-    guard let url = URL(string: urlString) else { completion(urlString); return }
-    var request = URLRequest(url: url)
-    request.httpMethod = "HEAD"
-    request.timeoutInterval = 5
-    URLSession.shared.dataTask(with: request) { _, response, _ in
-      completion((response as? HTTPURLResponse)?.url?.absoluteString ?? urlString)
-    }.resume()
-  }
+  private func showError() {
+    view.subviews.forEach { $0.removeFromSuperview() }
 
-  private func extractPlaceId(from url: String) -> String? {
-    // !1sChIJ... パターン（Google Maps データパラメータ）
-    if let range = url.range(of: "!1s(ChIJ[^!]+)", options: .regularExpression) {
-      return String(url[range]).replacingOccurrences(of: "!1s", with: "")
-    }
-    // q=place_id:ChIJ... パターン
-    if let range = url.range(of: "(?:q=place_id:|place_id=)(ChIJ[^&!/ ]+)", options: .regularExpression) {
-      let match = String(url[range])
-      return match.components(separatedBy: ":").last ?? match.components(separatedBy: "=").last
-    }
-    return nil
+    let iconView = UIImageView(image: UIImage(systemName: "exclamationmark.circle.fill"))
+    iconView.tintColor = .systemGray3
+    iconView.contentMode = .scaleAspectFit
+    iconView.translatesAutoresizingMaskIntoConstraints = false
+
+    let titleLabel = makeLabel("URLを取得できませんでした", font: .systemFont(ofSize: 15, weight: .semibold), color: .label)
+    titleLabel.textAlignment = .center
+
+    let subLabel = makeLabel("Googleマップのリンクを共有してください", font: .systemFont(ofSize: 13), color: .secondaryLabel)
+    subLabel.textAlignment = .center
+    subLabel.numberOfLines = 2
+
+    let closeButton = makeRoundedButton("閉じる", background: .secondarySystemBackground, foreground: .label)
+    closeButton.addTarget(self, action: #selector(didTapCancel), for: .touchUpInside)
+
+    [iconView, titleLabel, subLabel, closeButton].forEach { view.addSubview($0) }
+    let guide = view.safeAreaLayoutGuide
+    NSLayoutConstraint.activate([
+      iconView.topAnchor.constraint(equalTo: guide.topAnchor, constant: 40),
+      iconView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+      iconView.widthAnchor.constraint(equalToConstant: 44),
+      iconView.heightAnchor.constraint(equalToConstant: 44),
+      titleLabel.topAnchor.constraint(equalTo: iconView.bottomAnchor, constant: 16),
+      titleLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+      subLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 8),
+      subLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 40),
+      subLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -40),
+      closeButton.topAnchor.constraint(equalTo: subLabel.bottomAnchor, constant: 28),
+      closeButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+      closeButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+      closeButton.heightAnchor.constraint(equalToConstant: 50),
+    ])
   }
 
   private func setupUI(urlString: String, alreadyAdded: Bool) {
     view.subviews.forEach { $0.removeFromSuperview() }
-    view.backgroundColor = .systemBackground
-    let isAlreadyAdded = alreadyAdded
 
-    let titleLabel = makeLabel("cocodake", font: .systemFont(ofSize: 17, weight: .bold), color: .label)
-    let urlLabel = makeLabel(urlString, font: .systemFont(ofSize: 12), color: .secondaryLabel)
-    urlLabel.numberOfLines = 3
-    urlLabel.lineBreakMode = .byTruncatingMiddle
+    let iconView = UIImageView(image: UIImage(systemName: "mappin.circle.fill"))
+    iconView.tintColor = UIColor(red: 0.145, green: 0.388, blue: 0.925, alpha: 1)
+    iconView.contentMode = .scaleAspectFit
+    iconView.translatesAutoresizingMaskIntoConstraints = false
+
+    let placeName = extractDisplayName(from: urlString)
+    let nameLabel = makeLabel(placeName, font: .systemFont(ofSize: 16, weight: .semibold), color: .label)
+    nameLabel.numberOfLines = 2
+    nameLabel.textAlignment = .center
+
+    let domainLabel = makeLabel(friendlySource(from: urlString), font: .systemFont(ofSize: 12), color: .tertiaryLabel)
+    domainLabel.textAlignment = .center
 
     let cancelButton = UIButton(type: .system)
     cancelButton.setTitle("キャンセル", for: .normal)
@@ -91,46 +111,48 @@ class ShareViewController: UIViewController {
     cancelButton.translatesAutoresizingMaskIntoConstraints = false
     cancelButton.addTarget(self, action: #selector(didTapCancel), for: .touchUpInside)
 
-    var views: [UIView] = [titleLabel, urlLabel]
+    let guide = view.safeAreaLayoutGuide
 
-    if isAlreadyAdded {
+    if alreadyAdded {
       let badge = makeLabel("すでにリストにあります", font: .systemFont(ofSize: 14), color: .secondaryLabel)
       badge.textAlignment = .center
-      views.append(contentsOf: [badge, cancelButton])
 
-      views.forEach { view.addSubview($0) }
-      let guide = view.safeAreaLayoutGuide
+      [iconView, nameLabel, domainLabel, badge, cancelButton].forEach { view.addSubview($0) }
       NSLayoutConstraint.activate([
-        titleLabel.topAnchor.constraint(equalTo: guide.topAnchor, constant: 28),
-        titleLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-        urlLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 16),
-        urlLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-        urlLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
-        badge.topAnchor.constraint(equalTo: urlLabel.bottomAnchor, constant: 24),
+        iconView.topAnchor.constraint(equalTo: guide.topAnchor, constant: 32),
+        iconView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+        iconView.widthAnchor.constraint(equalToConstant: 40),
+        iconView.heightAnchor.constraint(equalToConstant: 40),
+        nameLabel.topAnchor.constraint(equalTo: iconView.bottomAnchor, constant: 12),
+        nameLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+        nameLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+        domainLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 4),
+        domainLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+        badge.topAnchor.constraint(equalTo: domainLabel.bottomAnchor, constant: 24),
         badge.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-        cancelButton.topAnchor.constraint(equalTo: badge.bottomAnchor, constant: 20),
+        cancelButton.topAnchor.constraint(equalTo: badge.bottomAnchor, constant: 16),
         cancelButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
       ])
     } else {
-      let addButton = UIButton(type: .system)
-      addButton.setTitle("リストに追加", for: .normal)
-      addButton.backgroundColor = UIColor(red: 0.145, green: 0.388, blue: 0.925, alpha: 1)
-      addButton.setTitleColor(.white, for: .normal)
-      addButton.titleLabel?.font = .systemFont(ofSize: 15, weight: .semibold)
-      addButton.layer.cornerRadius = 10
-      addButton.translatesAutoresizingMaskIntoConstraints = false
+      let addButton = makeRoundedButton(
+        "リストに追加",
+        background: UIColor(red: 0.145, green: 0.388, blue: 0.925, alpha: 1),
+        foreground: .white
+      )
       addButton.addTarget(self, action: #selector(didTapAdd), for: .touchUpInside)
 
-      views.append(contentsOf: [addButton, cancelButton])
-      views.forEach { view.addSubview($0) }
-      let guide = view.safeAreaLayoutGuide
+      [iconView, nameLabel, domainLabel, addButton, cancelButton].forEach { view.addSubview($0) }
       NSLayoutConstraint.activate([
-        titleLabel.topAnchor.constraint(equalTo: guide.topAnchor, constant: 28),
-        titleLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-        urlLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 16),
-        urlLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-        urlLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
-        addButton.topAnchor.constraint(equalTo: urlLabel.bottomAnchor, constant: 28),
+        iconView.topAnchor.constraint(equalTo: guide.topAnchor, constant: 32),
+        iconView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+        iconView.widthAnchor.constraint(equalToConstant: 40),
+        iconView.heightAnchor.constraint(equalToConstant: 40),
+        nameLabel.topAnchor.constraint(equalTo: iconView.bottomAnchor, constant: 12),
+        nameLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+        nameLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+        domainLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 4),
+        domainLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+        addButton.topAnchor.constraint(equalTo: domainLabel.bottomAnchor, constant: 28),
         addButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
         addButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
         addButton.heightAnchor.constraint(equalToConstant: 50),
@@ -180,8 +202,43 @@ class ShareViewController: UIViewController {
     }
   }
 
-  private func complete() {
-    extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
+  private func resolveUrl(_ urlString: String, completion: @escaping (String) -> Void) {
+    guard let url = URL(string: urlString) else { completion(urlString); return }
+    var request = URLRequest(url: url)
+    request.httpMethod = "HEAD"
+    request.timeoutInterval = 5
+    URLSession.shared.dataTask(with: request) { _, response, _ in
+      completion((response as? HTTPURLResponse)?.url?.absoluteString ?? urlString)
+    }.resume()
+  }
+
+  private func extractPlaceId(from url: String) -> String? {
+    if let range = url.range(of: "!1s(ChIJ[^!]+)", options: .regularExpression) {
+      return String(url[range]).replacingOccurrences(of: "!1s", with: "")
+    }
+    if let range = url.range(of: "(?:q=place_id:|place_id=)(ChIJ[^&!/ ]+)", options: .regularExpression) {
+      let match = String(url[range])
+      return match.components(separatedBy: ":").last ?? match.components(separatedBy: "=").last
+    }
+    return nil
+  }
+
+  private func extractDisplayName(from urlString: String) -> String {
+    if let url = URL(string: urlString) {
+      let parts = url.pathComponents
+      if let idx = parts.firstIndex(of: "place"), idx + 1 < parts.count {
+        let raw = parts[idx + 1]
+        let decoded = raw.removingPercentEncoding ?? raw
+        if !decoded.isEmpty && decoded != "/" { return decoded }
+      }
+    }
+    return urlString.removingPercentEncoding ?? urlString
+  }
+
+  private func friendlySource(from urlString: String) -> String {
+    guard let host = URL(string: urlString)?.host else { return "Google マップ" }
+    if host.contains("google.com") || host.contains("goo.gl") { return "Google マップ" }
+    return host.replacingOccurrences(of: "www.", with: "")
   }
 
   private func makeLabel(_ text: String, font: UIFont, color: UIColor) -> UILabel {
@@ -191,6 +248,21 @@ class ShareViewController: UIViewController {
     label.textColor = color
     label.translatesAutoresizingMaskIntoConstraints = false
     return label
+  }
+
+  private func makeRoundedButton(_ title: String, background: UIColor, foreground: UIColor) -> UIButton {
+    let button = UIButton(type: .system)
+    button.setTitle(title, for: .normal)
+    button.backgroundColor = background
+    button.setTitleColor(foreground, for: .normal)
+    button.titleLabel?.font = .systemFont(ofSize: 15, weight: .semibold)
+    button.layer.cornerRadius = 12
+    button.translatesAutoresizingMaskIntoConstraints = false
+    return button
+  }
+
+  private func complete() {
+    extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
   }
 }
 `;
@@ -275,8 +347,29 @@ function withShareExtensionTarget(config) {
     fs.writeFileSync(path.join(extDir, 'Info.plist'), INFO_PLIST, 'utf8');
     fs.writeFileSync(path.join(extDir, 'ShareExtension.entitlements'), ENTITLEMENTS_PLIST, 'utf8');
 
-    // 既にターゲットが追加済みならスキップ
-    if (xcodeProject.pbxTargetByName(EXTENSION_TARGET_NAME)) {
+    const existingTarget = xcodeProject.pbxTargetByName(EXTENSION_TARGET_NAME);
+
+    // 既存ターゲットでもビルド設定は毎回更新する
+    if (existingTarget) {
+      const developmentTeam =
+        process.env.APPLE_TEAM_ID ||
+        config.ios?.appleTeamId ||
+        '';
+      const configListKey = existingTarget.buildConfigurationList;
+      const configListSection = xcodeProject.hash.project.objects['XCConfigurationList'] ?? {};
+      const configList = configListSection[configListKey];
+      if (configList?.buildConfigurations) {
+        const buildConfigSection = xcodeProject.pbxXCBuildConfigurationSection();
+        configList.buildConfigurations.forEach((configRef) => {
+          const cfg = buildConfigSection[configRef.value];
+          if (!cfg?.buildSettings) return;
+          cfg.buildSettings['CODE_SIGN_STYLE'] = 'Manual';
+          cfg.buildSettings['DEVELOPMENT_TEAM'] = developmentTeam;
+          cfg.buildSettings['CODE_SIGN_IDENTITY'] = '"Apple Distribution"';
+          cfg.buildSettings['CODE_SIGN_ENTITLEMENTS'] =
+            '"ShareExtension/ShareExtension.entitlements"';
+        });
+      }
       return config;
     }
 
@@ -346,7 +439,6 @@ function withShareExtensionTarget(config) {
         cfg.buildSettings['CODE_SIGN_STYLE'] = 'Manual';
         cfg.buildSettings['DEVELOPMENT_TEAM'] = developmentTeam;
         cfg.buildSettings['CODE_SIGN_IDENTITY'] = '"Apple Distribution"';
-        cfg.buildSettings['PROVISIONING_PROFILE'] = '98044b0e-eb6b-4771-885c-3f63ef32bca3';
         cfg.buildSettings['CODE_SIGN_ENTITLEMENTS'] =
           '"ShareExtension/ShareExtension.entitlements"';
       });

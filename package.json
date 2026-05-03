@@ -15,6 +15,7 @@
     "@react-navigation/bottom-tabs": "^7.15.11",
     "@react-navigation/native": "^7.2.2",
     "@supabase/supabase-js": "^2.105.1",
+    "@types/supercluster": "^7.1.3",
     "expo": "~54.0.33",
     "expo-clipboard": "~8.0.8",
     "expo-constants": "~18.0.13",
@@ -31,7 +32,8 @@
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.16.0",
     "react-native-url-polyfill": "^3.0.0",
-    "share-intent": "file:./modules/share-intent"
+    "share-intent": "file:./modules/share-intent",
+    "supercluster": "^8.0.1"
   },
   "devDependencies": {
     "@types/react": "~19.1.0",

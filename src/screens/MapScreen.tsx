@@ -1,4 +1,5 @@
-import { useRef, useState, useCallback, useEffect } from 'react';
+import { useRef, useState, useCallback, useEffect, useMemo } from 'react';
+import Supercluster from 'supercluster';
 import {
   StyleSheet, View, Text, TouchableOpacity,
   TextInput, FlatList, ActivityIndicator,
@@ -196,15 +197,29 @@ export default function MapScreen({
     }
   }, []);
 
-  // ピンタップ → 選択トグル（シェア用）
-  const handlePinPress = useCallback((
+  // ピンタップ → クラスターなら拡大、個別ピンなら選択トグル
+  const handlePinPress = useCallback(async (
     event: NativeSyntheticEvent<PressEventWithFeatures>,
   ) => {
     event.stopPropagation?.();
     const feature = event.nativeEvent.features[0];
-    const id = feature?.properties?.id as string | undefined;
+    if (!feature) return;
+
+    if (feature.properties?.cluster) {
+      const clusterId = feature.properties.cluster_id as number;
+      const coords = (feature.geometry as GeoJSON.Point).coordinates;
+      const zoom = sc.getClusterExpansionZoom(clusterId);
+      cameraRef.current?.flyTo({
+        center: [coords[0], coords[1]],
+        zoom,
+        duration: 400,
+      });
+      return;
+    }
+
+    const id = feature.properties?.id as string | undefined;
     if (!id) return;
-    setPreview(null); // PlaceCard を閉じてトレイを見せる
+    setPreview(null);
     onToggleSelect(id);
   }, [onToggleSelect]);
 
@@ -308,16 +323,36 @@ export default function MapScreen({
     }
   }, [doSave, onToggleSelect]);
 
-  // ピン用 GeoJSON
-  const geojson: GeoJSON.FeatureCollection = {
-    type: 'FeatureCollection',
-    features: places.map((p) => ({
-      type: 'Feature',
-      id: p.id,
-      geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
+  // Supercluster（10件以上でのみクラスター化）
+  const sc = useMemo(() => {
+    const index = new Supercluster({ radius: 60, maxZoom: 16, minPoints: 10 });
+    index.load(places.map((p) => ({
+      type: 'Feature' as const,
+      geometry: { type: 'Point' as const, coordinates: [p.lng, p.lat] },
       properties: { id: p.id, name: p.name ?? '', selected: selectedIds.has(p.id) },
-    })),
-  };
+    })));
+    return index;
+  }, [places, selectedIds]);
+
+  const [mapRegion, setMapRegion] = useState<{ zoom: number; bounds: [number, number, number, number] } | null>(null);
+
+  const geojson: GeoJSON.FeatureCollection = useMemo(() => {
+    if (!mapRegion) {
+      return {
+        type: 'FeatureCollection',
+        features: places.map((p) => ({
+          type: 'Feature' as const,
+          id: p.id,
+          geometry: { type: 'Point' as const, coordinates: [p.lng, p.lat] },
+          properties: { id: p.id, name: p.name ?? '', selected: selectedIds.has(p.id) },
+        })),
+      };
+    }
+    return {
+      type: 'FeatureCollection',
+      features: sc.getClusters(mapRegion.bounds, Math.floor(mapRegion.zoom)) as GeoJSON.Feature[],
+    };
+  }, [sc, mapRegion, places, selectedIds]);
 
   return (
     <View style={styles.container}>
@@ -326,7 +361,14 @@ export default function MapScreen({
         style={styles.map}
         mapStyle={STYLE_URL}
         onPress={selectionMode ? undefined : handleMapPress}
-        onRegionDidChange={selectionMode ? countInBounds : undefined}
+        onRegionDidChange={async (e) => {
+          if (selectionMode) { countInBounds(); return; }
+          const bounds = await mapRef.current?.getBounds();
+          const zoom = await mapRef.current?.getZoom();
+          if (bounds && zoom != null) {
+            setMapRegion({ zoom, bounds: [bounds[0], bounds[1], bounds[2], bounds[3]] });
+          }
+        }}
       >
         <Camera
           ref={cameraRef}
@@ -361,9 +403,36 @@ export default function MapScreen({
 
         {/* ピン */}
         <GeoJSONSource id="places" data={geojson} onPress={handlePinPress}>
+          {/* クラスター円（Superclusterが10件以上を集約） */}
+          <Layer
+            id="cluster-circles"
+            type="circle"
+            filter={['has', 'point_count'] as unknown as string}
+            paint={{
+              'circle-color': '#3b82f6',
+              'circle-radius': ['step', ['get', 'point_count'], 20, 30, 26, 100, 32] as unknown as number,
+              'circle-stroke-width': 2,
+              'circle-stroke-color': '#ffffff',
+            }}
+          />
+          <Layer
+            id="cluster-count"
+            type="symbol"
+            filter={['has', 'point_count'] as unknown as string}
+            layout={{
+              'text-field': ['get', 'point_count_abbreviated'] as unknown as string,
+              'text-size': 12,
+              'text-font': ['Open Sans Bold'],
+            }}
+            paint={{
+              'text-color': '#ffffff',
+            }}
+          />
+          {/* 個別ピン */}
           <Layer
             id="place-circles"
             type="circle"
+            filter={['!', ['has', 'point_count']] as unknown as string}
             paint={{
               'circle-radius': 8,
               'circle-color': ['case', ['get', 'selected'], '#10b981', '#ef4444'] as unknown as string,
@@ -374,6 +443,7 @@ export default function MapScreen({
           <Layer
             id="place-labels"
             type="symbol"
+            filter={['!', ['has', 'point_count']] as unknown as string}
             layout={{
               'text-field': ['get', 'name'] as unknown as string,
               'text-size': 12,
