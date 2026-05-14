@@ -12,12 +12,13 @@ interface Props {
   visible: boolean;
   onClose: () => void;
   onSignOut: () => void;
+  onDeleteAccount: () => void;
   avatarUrl: string | null;
   userName: string | null;
   userEmail: string | null;
 }
 
-export default function SettingsScreen({ visible, onClose, onSignOut, avatarUrl, userName, userEmail }: Props) {
+export default function SettingsScreen({ visible, onClose, onSignOut, onDeleteAccount, avatarUrl, userName, userEmail }: Props) {
   const version = Constants.expoConfig?.version ?? '—';
   const [legalDoc, setLegalDoc] = useState<'terms' | 'privacy' | null>(null);
 
@@ -28,21 +29,20 @@ export default function SettingsScreen({ visible, onClose, onSignOut, avatarUrl,
     ]);
   };
 
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      'アカウントを削除',
+      'アカウントとすべてのデータを削除します。この操作は取り消せません。',
+      [
+        { text: 'キャンセル', style: 'cancel' },
+        { text: '削除する', style: 'destructive', onPress: () => { onClose(); onDeleteAccount(); } },
+      ]
+    );
+  };
+
 
   return (
     <>
-    <LegalScreen
-      visible={legalDoc === 'terms'}
-      onClose={() => setLegalDoc(null)}
-      title="利用規約"
-      content={TERMS}
-    />
-    <LegalScreen
-      visible={legalDoc === 'privacy'}
-      onClose={() => setLegalDoc(null)}
-      title="プライバシーポリシー"
-      content={PRIVACY_POLICY}
-    />
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
       <SafeAreaView style={styles.root}>
         {/* ヘッダー */}
@@ -104,7 +104,7 @@ export default function SettingsScreen({ visible, onClose, onSignOut, avatarUrl,
             </TouchableOpacity>
           </View>
 
-          {/* ログアウト */}
+          {/* ログアウト・アカウント削除 */}
           <View style={styles.card}>
             <TouchableOpacity style={styles.row} onPress={handleSignOut}>
               <View style={styles.rowLeft}>
@@ -112,9 +112,30 @@ export default function SettingsScreen({ visible, onClose, onSignOut, avatarUrl,
                 <Text style={styles.rowLabelDestructive}>ログアウト</Text>
               </View>
             </TouchableOpacity>
+
+            <View style={styles.separator} />
+
+            <TouchableOpacity style={styles.row} onPress={handleDeleteAccount}>
+              <View style={styles.rowLeft}>
+                <Ionicons name="trash-outline" size={20} color="#ef4444" />
+                <Text style={styles.rowLabelDestructive}>アカウントを削除</Text>
+              </View>
+            </TouchableOpacity>
           </View>
         </ScrollView>
       </SafeAreaView>
+      <LegalScreen
+        visible={legalDoc === 'terms'}
+        onClose={() => setLegalDoc(null)}
+        title="利用規約"
+        content={TERMS}
+      />
+      <LegalScreen
+        visible={legalDoc === 'privacy'}
+        onClose={() => setLegalDoc(null)}
+        title="プライバシーポリシー"
+        content={PRIVACY_POLICY}
+      />
     </Modal>
     </>
   );

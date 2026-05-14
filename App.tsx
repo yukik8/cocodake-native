@@ -5,12 +5,11 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { View, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from './src/lib/supabase';
-import { fetchPlaces, addPlace } from './src/lib/api';
+import { fetchPlaces, addPlace, deleteAccount } from './src/lib/api';
 import TabNavigator from './src/navigation/TabNavigator';
 import LoginScreen from './src/screens/LoginScreen';
 import ShareModal from './src/components/ShareModal';
 import SettingsScreen from './src/screens/SettingsScreen';
-import ClipboardBanner from './src/components/ClipboardBanner';
 import { useShareIntent } from './src/hooks/useShareIntent';
 import { setPlaceData, setUserSession } from './modules/share-intent';
 import type { Place } from './src/types';
@@ -43,6 +42,16 @@ export default function App() {
   }, []);
 
   const sessionId = session?.user.id ?? '';
+
+  const handleDeleteAccount = useCallback(async () => {
+    if (!sessionId) return;
+    try {
+      await deleteAccount(sessionId);
+      await supabase.auth.signOut();
+    } catch (e: unknown) {
+      Alert.alert('エラー', e instanceof Error ? e.message : 'アカウント削除に失敗しました');
+    }
+  }, [sessionId]);
 
   // Placesロード
   const loadPlaces = useCallback(async () => {
@@ -164,9 +173,6 @@ export default function App() {
         />
       </NavigationContainer>
 
-      {/* クリップボードURL検出バナー */}
-      <ClipboardBanner onAddUrl={handleClipboardUrl} />
-
       {/* 共有モーダル */}
       <ShareModal
         visible={showShare}
@@ -179,6 +185,7 @@ export default function App() {
         visible={showSettings}
         onClose={() => setShowSettings(false)}
         onSignOut={handleSignOut}
+        onDeleteAccount={handleDeleteAccount}
         avatarUrl={session.user.user_metadata?.avatar_url ?? null}
         userName={session.user.user_metadata?.full_name ?? null}
         userEmail={session.user.email ?? null}

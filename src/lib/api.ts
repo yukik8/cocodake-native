@@ -90,3 +90,15 @@ export async function searchPlaces(q: string, lat?: number, lng?: number): Promi
   const res = await apiFetch(`/api/search?q=${encodeURIComponent(q)}${locParam}`);
   return res.json();
 }
+
+export async function deleteAccount(session: string): Promise<void> {
+  const res = await apiFetch('/api/account', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error ?? 'アカウント削除に失敗しました');
+  }
+}
