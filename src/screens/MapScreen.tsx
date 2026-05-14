@@ -34,6 +34,8 @@ interface MapScreenProps {
   onPlaceAdded: () => void;
   focusedPlace?: Place | null;
   onClearFocus?: () => void;
+  shareSelectMode?: boolean;
+  onEnterShareSelectMode?: () => void;
 }
 
 export default function MapScreen({
@@ -45,6 +47,8 @@ export default function MapScreen({
   onPlaceAdded,
   focusedPlace,
   onClearFocus,
+  shareSelectMode = false,
+  onEnterShareSelectMode,
 }: MapScreenProps) {
   const mapRef = useRef<MapRef>(null);
   const cameraRef = useRef<CameraRef>(null);
@@ -229,9 +233,25 @@ export default function MapScreen({
 
     const id = feature.properties?.id as string | undefined;
     if (!id) return;
-    setPreview(null);
-    onToggleSelect(id);
-  }, [onToggleSelect]);
+
+    if (shareSelectMode) {
+      setPreview(null);
+      onToggleSelect(id);
+      return;
+    }
+
+    const place = places.find((p) => p.id === id);
+    if (!place) return;
+    setPreview({
+      lat: place.lat, lng: place.lng,
+      name: place.name, address: place.address,
+      category: place.category, rating: place.rating,
+      photo_url: place.photo_url, place_id: null,
+      loading: false, saving: false,
+      isExisting: true, existingId: place.id,
+      note: place.note,
+    });
+  }, [onToggleSelect, shareSelectMode, places]);
 
   // 検索
   const handleSearch = useCallback((q: string) => {
@@ -606,6 +626,11 @@ export default function MapScreen({
             await updateNote(preview.existingId!, note, sessionId);
             onPlaceAdded();
           } : undefined}
+          onAddToShare={preview.existingId ? () => {
+            onToggleSelect(preview.existingId!);
+            onEnterShareSelectMode?.();
+            setPreview(null);
+          } : undefined}
         />
       )}
 
@@ -620,15 +645,19 @@ export default function MapScreen({
       />
 
       {/* 選択中スポット トレイ */}
-      {!preview && selectedIds.size > 0 && (
+      {!preview && (selectedIds.size > 0 || shareSelectMode) && (
         <View style={styles.tray}>
           <View style={styles.trayHeader}>
-            <Text style={styles.trayCount}>{selectedIds.size}件選択中</Text>
-            <TouchableOpacity onPress={onClearAll} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Text style={styles.trayClrAll}>全解除</Text>
-            </TouchableOpacity>
+            <Text style={styles.trayCount}>
+              {selectedIds.size > 0 ? `${selectedIds.size}件選択中` : 'ピンをタップして追加'}
+            </Text>
+            {selectedIds.size > 0 && (
+              <TouchableOpacity onPress={onClearAll} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Text style={styles.trayClrAll}>全解除</Text>
+              </TouchableOpacity>
+            )}
           </View>
-          <FlatList
+          {selectedIds.size > 0 && <FlatList
             horizontal
             data={places.filter((p) => selectedIds.has(p.id))}
             keyExtractor={(p) => p.id}
@@ -666,7 +695,12 @@ export default function MapScreen({
                     ) : null}
                     <TouchableOpacity
                       style={styles.trayCardMapLink}
-                      onPress={() => Linking.openURL(p.url ?? `https://www.google.com/maps?q=${p.lat},${p.lng}`)}
+                      onPress={async () => {
+                        if (p.url) { Linking.openURL(p.url); return; }
+                        const googleApp = `comgooglemaps://?q=${p.lat},${p.lng}`;
+                        const canOpen = await Linking.canOpenURL(googleApp);
+                        Linking.openURL(canOpen ? googleApp : `https://maps.apple.com/?ll=${p.lat},${p.lng}`);
+                      }}
                     >
                       <Ionicons name="map-outline" size={11} color="#2563eb" />
                       <Text style={styles.trayCardMapLinkText}>Google Maps</Text>
@@ -682,7 +716,7 @@ export default function MapScreen({
                 </TouchableOpacity>
               </View>
             )}
-          />
+          />}
         </View>
       )}
     </View>

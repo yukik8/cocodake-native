@@ -41,15 +41,23 @@ export default function TabNavigator({
 }: Props) {
   const [focusedPlace, setFocusedPlace] = useState<Place | null>(null);
   const [menuVisible, setMenuVisible] = useState(false);
+  const [shareSelectMode, setShareSelectMode] = useState(false);
+
+  const handleSharePress = () => {
+    if (selectedCount > 0) {
+      setShareSelectMode(false);
+      onOpenShare();
+    } else if (shareSelectMode) {
+      setShareSelectMode(false);
+    } else {
+      setShareSelectMode(true);
+    }
+  };
 
   const shareHeaderRight = () => (
-    <TouchableOpacity
-      onPress={onOpenShare}
-      disabled={selectedCount === 0}
-      style={{ marginRight: 16, opacity: selectedCount === 0 ? 0.4 : 1 }}
-    >
+    <TouchableOpacity onPress={handleSharePress} style={{ marginRight: 16 }}>
       <Text style={{ fontSize: 14, fontWeight: '700', color: '#2563eb' }}>
-        {selectedCount > 0 ? `${selectedCount}件をシェア` : 'シェア'}
+        {selectedCount > 0 ? `${selectedCount}件をシェア` : shareSelectMode ? 'キャンセル' : 'シェア'}
       </Text>
     </TouchableOpacity>
   );
@@ -105,6 +113,8 @@ export default function TabNavigator({
               onPlaceAdded={onPlaceAdded}
               focusedPlace={focusedPlace}
               onClearFocus={() => setFocusedPlace(null)}
+              shareSelectMode={shareSelectMode}
+              onEnterShareSelectMode={() => setShareSelectMode(true)}
             />
           )}
         </Tab.Screen>

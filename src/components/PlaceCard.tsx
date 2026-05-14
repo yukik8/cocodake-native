@@ -16,9 +16,10 @@ interface Props {
   onDelete?: () => void;
   hasSelection?: boolean;
   onNoteChange?: (note: string | null) => void;
+  onAddToShare?: () => void;
 }
 
-export default function PlaceCard({ preview, onSave, onSaveAndShare, onClose, isExisting, onDelete, hasSelection, onNoteChange }: Props) {
+export default function PlaceCard({ preview, onSave, onSaveAndShare, onClose, isExisting, onDelete, hasSelection, onNoteChange, onAddToShare }: Props) {
   const [editingNote, setEditingNote] = useState(false);
   const [noteText, setNoteText] = useState(preview.note ?? '');
   const bottomAnim = useRef(new Animated.Value(24)).current;
@@ -114,12 +115,17 @@ export default function PlaceCard({ preview, onSave, onSaveAndShare, onClose, is
           )}
 
           {isExisting ? (
-            <View style={styles.actions}>
-              <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
+            <View>
+              <View style={styles.actions}>
+                <TouchableOpacity style={styles.deleteBtn} onPress={onDelete} disabled={!onDelete}>
+                  <Text style={styles.deleteText}>リストから削除</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.shareAddBtn} onPress={onAddToShare} disabled={!onAddToShare}>
+                  <Text style={styles.shareAddText}>シェアに追加</Text>
+                </TouchableOpacity>
+              </View>
+              <TouchableOpacity style={styles.closeBtnFull} onPress={onClose}>
                 <Text style={styles.closeText}>閉じる</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.deleteBtn} onPress={onDelete} disabled={!onDelete}>
-                <Text style={styles.deleteText}>リストから削除</Text>
               </TouchableOpacity>
             </View>
           ) : (
@@ -244,7 +250,20 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     alignItems: 'center',
   },
+  closeBtnFull: {
+    paddingVertical: 14,
+    alignItems: 'center',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#f3f4f6',
+  },
   closeText: { fontSize: 15, color: '#6b7280' },
+  shareAddBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    alignItems: 'center',
+    backgroundColor: '#2563eb',
+  },
+  shareAddText: { fontSize: 15, fontWeight: '700', color: '#fff' },
   saveBtn: {
     flex: 1,
     paddingVertical: 14,
