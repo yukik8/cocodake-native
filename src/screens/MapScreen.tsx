@@ -147,6 +147,17 @@ export default function MapScreen({
     setSelectionMode(false);
   }, [places, selectedIds, onToggleSelect]);
 
+  // 起動時の初期位置を現在地に設定
+  const [initialCenter, setInitialCenter] = useState<[number, number]>([139.6917, 35.6895]);
+  useEffect(() => {
+    Location.getForegroundPermissionsAsync().then(({ status }) => {
+      if (status !== 'granted') return;
+      Location.getCurrentPositionAsync({}).then((loc) => {
+        setInitialCenter([loc.coords.longitude, loc.coords.latitude]);
+      }).catch(() => {});
+    });
+  }, []);
+
   // 現在地に移動
   const goToCurrentLocation = useCallback(async () => {
     const { status } = await Location.requestForegroundPermissionsAsync();
@@ -404,7 +415,7 @@ export default function MapScreen({
       >
         <Camera
           ref={cameraRef}
-          initialViewState={{ center: [139.6917, 35.6895], zoom: 12 }}
+          initialViewState={{ center: initialCenter, zoom: 12 }}
         />
 
         {/* プレビューピン（タップ/検索で選択中の場所） */}
