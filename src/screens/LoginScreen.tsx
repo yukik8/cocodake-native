@@ -47,6 +47,7 @@ export default function LoginScreen() {
         options: {
           redirectTo: 'cocodake://auth-callback',
           skipBrowserRedirect: true,
+          queryParams: { prompt: 'select_account' },
         },
       });
       if (error || !data.url) throw error ?? new Error('No URL');

@@ -19,9 +19,8 @@
       "bundleIdentifier": "com.cocodake.app",
       "appleTeamId": "723PYY2A7A",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "現在地をマップに表示するために使用します",
-        "NSLocationAlwaysUsageDescription": "現在地をマップに表示するために使用します",
-        "NSPhotoLibraryUsageDescription": "写真ライブラリからファイルをインポートするために使用します",
+        "NSLocationWhenInUseUsageDescription": "現在地をマップ上に表示し、近くのスポットを探すために使用します",
+        "NSPhotoLibraryUsageDescription": "Google TakeoutのJSONファイルなど、保存済みスポットのデータをインポートするために使用します",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
@@ -52,7 +51,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "現在地をマップに表示するために使用します"
+          "locationWhenInUsePermission": "現在地をマップ上に表示し、近くのスポットを探すために使用します"
         }
       ],
       [

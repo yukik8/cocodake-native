@@ -31,6 +31,7 @@ export interface PreviewResult {
   lat: number;
   lng: number;
   place_id: string | null;
+  url?: string | null;
 }
 
 export async function previewByCoords(lat: number, lng: number, name?: string): Promise<PreviewResult> {

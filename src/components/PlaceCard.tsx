@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import {
   Animated, View, Text, Image, TouchableOpacity,
   ActivityIndicator, StyleSheet, TextInput,
-  Keyboard, type KeyboardEvent,
+  Keyboard, Linking, type KeyboardEvent,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { PreviewResult } from '../lib/api';
@@ -124,24 +124,52 @@ export default function PlaceCard({ preview, onSave, onSaveAndShare, onClose, is
                   <Text style={styles.shareAddText}>シェアに追加</Text>
                 </TouchableOpacity>
               </View>
+              <TouchableOpacity
+                style={styles.mapsLinkBtn}
+                onPress={() => {
+                  const url = preview.url
+                    ?? (preview.place_id
+                      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(preview.name ?? '')}&query_place_id=${preview.place_id}`
+                      : `https://www.google.com/maps?q=${preview.lat},${preview.lng}`);
+                  Linking.openURL(url);
+                }}
+              >
+                <Ionicons name="map-outline" size={14} color="#2563eb" />
+                <Text style={styles.mapsLinkText}>Google Mapsで開く</Text>
+              </TouchableOpacity>
               <TouchableOpacity style={styles.closeBtnFull} onPress={onClose}>
                 <Text style={styles.closeText}>閉じる</Text>
               </TouchableOpacity>
             </View>
           ) : (
-            <View style={styles.actions}>
-              <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
-                <Text style={styles.closeText}>閉じる</Text>
-              </TouchableOpacity>
+            <View>
+              <View style={styles.actions}>
+                <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
+                  <Text style={styles.closeText}>閉じる</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.saveBtn, preview.saving && styles.saveBtnDisabled]}
+                  onPress={hasSelection ? onSaveAndShare : onSave}
+                  disabled={preview.saving}
+                >
+                  {preview.saving
+                    ? <ActivityIndicator size="small" color="#fff" />
+                    : <Text style={styles.saveText}>{hasSelection ? '追加してシェア' : '追加'}</Text>
+                  }
+                </TouchableOpacity>
+              </View>
               <TouchableOpacity
-                style={[styles.saveBtn, preview.saving && styles.saveBtnDisabled]}
-                onPress={hasSelection ? onSaveAndShare : onSave}
-                disabled={preview.saving}
+                style={styles.mapsLinkBtn}
+                onPress={() => {
+                  const url = preview.url
+                    ?? (preview.place_id
+                      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(preview.name ?? '')}&query_place_id=${preview.place_id}`
+                      : `https://www.google.com/maps?q=${preview.lat},${preview.lng}`);
+                  Linking.openURL(url);
+                }}
               >
-                {preview.saving
-                  ? <ActivityIndicator size="small" color="#fff" />
-                  : <Text style={styles.saveText}>{hasSelection ? '追加してシェア' : '追加'}</Text>
-                }
+                <Ionicons name="map-outline" size={14} color="#2563eb" />
+                <Text style={styles.mapsLinkText}>Google Mapsで開く</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -257,6 +285,16 @@ const styles = StyleSheet.create({
     borderTopColor: '#f3f4f6',
   },
   closeText: { fontSize: 15, color: '#6b7280' },
+  mapsLinkBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#f3f4f6',
+  },
+  mapsLinkText: { fontSize: 13, color: '#2563eb' },
   shareAddBtn: {
     flex: 1,
     paddingVertical: 14,

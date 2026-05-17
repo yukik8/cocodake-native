@@ -2,7 +2,7 @@ import 'react-native-url-polyfill/auto';
 import { NavigationContainer } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { View, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, Alert, ActivityIndicator, AppState } from 'react-native';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from './src/lib/supabase';
 import { fetchPlaces, addPlace, deleteAccount } from './src/lib/api';
@@ -66,6 +66,14 @@ export default function App() {
   }, [sessionId]);
 
   useEffect(() => { loadPlaces(); }, [loadPlaces]);
+
+  // フォアグラウンドに戻ったとき（Share Extension経由での追加を反映）
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') loadPlaces();
+    });
+    return () => sub.remove();
+  }, [loadPlaces]);
 
   // Share Extensionが使えるようにセッション情報をApp Groupに書き込む
   useEffect(() => {
