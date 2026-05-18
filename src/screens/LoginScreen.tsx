@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  ActivityIndicator, Alert, SafeAreaView,
+  ActivityIndicator, Alert, SafeAreaView, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import { supabase } from '../lib/supabase';
 import LegalScreen from './LegalScreen';
 import { TERMS, PRIVACY_POLICY } from '../lib/legalContent';
@@ -37,6 +38,7 @@ const STEPS = [
 
 export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
+  const [appleLoading, setAppleLoading] = useState(false);
   const [legalDoc, setLegalDoc] = useState<'terms' | 'privacy' | null>(null);
 
   const handleGoogleLogin = async () => {
@@ -79,6 +81,30 @@ export default function LoginScreen() {
       Alert.alert('ログインエラー', String(e));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAppleLogin = async () => {
+    setAppleLoading(true);
+    try {
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+      if (!credential.identityToken) throw new Error('No identity token');
+      const { error } = await supabase.auth.signInWithIdToken({
+        provider: 'apple',
+        token: credential.identityToken,
+      });
+      if (error) throw error;
+    } catch (e: any) {
+      if (e?.code !== 'ERR_REQUEST_CANCELED') {
+        Alert.alert('ログインエラー', String(e?.message ?? e));
+      }
+    } finally {
+      setAppleLoading(false);
     }
   };
 
@@ -129,7 +155,7 @@ export default function LoginScreen() {
         <TouchableOpacity
           style={[styles.googleBtn, loading && styles.googleBtnDisabled]}
           onPress={handleGoogleLogin}
-          disabled={loading}
+          disabled={loading || appleLoading}
           activeOpacity={0.85}
         >
           {loading ? (
@@ -141,6 +167,16 @@ export default function LoginScreen() {
             </>
           )}
         </TouchableOpacity>
+
+        {Platform.OS === 'ios' && (
+          <AppleAuthentication.AppleAuthenticationButton
+            buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+            buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+            cornerRadius={14}
+            style={styles.appleBtn}
+            onPress={handleAppleLogin}
+          />
+        )}
 
         <Text style={styles.terms}>
           ログインすることで
@@ -260,6 +296,10 @@ const styles = StyleSheet.create({
   googleBtnDisabled: { opacity: 0.5 },
   googleG: { fontSize: 16, fontWeight: '700', color: '#4285F4' },
   googleBtnText: { fontSize: 15, fontWeight: '600', color: '#111827' },
+  appleBtn: {
+    width: '100%',
+    height: 50,
+  },
 
   terms: {
     fontSize: 11,
