@@ -93,28 +93,53 @@ export default function ImportScreen({ sessionId, onImportComplete }: Props) {
 
       const res = await fetch(`${API_URL}/api/import`, {
         method: 'POST',
+        headers: { 'X-Stream': 'true' },
         body: formData,
       });
-      const data = await res.json();
 
-      if (!res.ok) {
-        setMessage({ type: 'error', text: data.error ?? 'インポートに失敗しました' });
-      } else {
-        const imported = data.imported as number;
-        setMessage({ type: 'success', text: `${imported}件を取り込み中... 写真・評価を取得しています` });
-        onImportComplete();
+      if (!res.body) throw new Error('no response body');
 
-        // エンリッチを待ってからリロード
-        try {
-          await fetch(`${API_URL}/api/enrich`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ session: sessionId, limit: 50 }),
-          });
-        } catch { /* 無視 */ }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      let imported = 0;
 
-        setMessage({ type: 'success', text: `${imported}件のスポットをインポートしました` });
-        onImportComplete(); // 写真取得後に再読込
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop() ?? '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const event = JSON.parse(line.slice(6));
+          if (event.type === 'progress') {
+            if (event.phase === 'parsing') setProgress('ファイルを解析中...');
+            else if (event.phase === 'geocoding') setProgress(`座標を取得中... (${event.current} / ${event.total}件)`);
+            else if (event.phase === 'saving') setProgress('データを保存中...');
+          } else if (event.type === 'done') {
+            imported = event.imported;
+            setProgress(null);
+            const details: string[] = [];
+            if (event.duplicates > 0) details.push(`重複 ${event.duplicates}件スキップ`);
+            if (event.geocodeFailed > 0) details.push(`座標取得失敗 ${event.geocodeFailed}件`);
+            const suffix = details.length > 0 ? `（${details.join('、')}）` : '';
+            setMessage({ type: 'success', text: `${imported}件を取り込み中... 写真・評価を取得しています` });
+            onImportComplete();
+            try {
+              await fetch(`${API_URL}/api/enrich`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ session: sessionId, limit: 50 }),
+              });
+            } catch { /* 無視 */ }
+            setMessage({ type: 'success', text: `${imported}件を新規追加しました${suffix}` });
+            onImportComplete();
+          } else if (event.type === 'error') {
+            setProgress(null);
+            setMessage({ type: 'error', text: event.message ?? 'インポートに失敗しました' });
+          }
+        }
       }
     } catch (e) {
       setMessage({ type: 'error', text: String(e) });
@@ -191,7 +216,7 @@ export default function ImportScreen({ sessionId, onImportComplete }: Props) {
           <View style={styles.howTo}>
             <Text style={styles.howToTitle}>Google Takeoutの使い方</Text>
             <Text style={styles.howToStep}>1. takeout.google.com を開く</Text>
-            <Text style={styles.howToStep}>2. 「すべて選択を解除」→「保存済み（Saved）」のみ選択</Text>
+            <Text style={styles.howToStep}>2. 「すべて選択を解除」→「Saved」のみ選択</Text>
             <Text style={styles.howToStep}>3. エクスポート → メールリンクからDL</Text>
             <Text style={styles.howToStep}>4. 解凍して好きなCSV（例:「行ってみたい.csv」）またはJSONを選択</Text>
           </View>
