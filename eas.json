@@ -14,7 +14,7 @@
     "preview": {
       "distribution": "internal",
       "ios": {
-        "simulator": false,
+        "simulator": true,
         "image": "macos-sequoia-15.6-xcode-26.0"
       }
     },
