@@ -24,8 +24,10 @@ interface Props {
   sessionId: string;
   onToggleSelect: (id: string) => void;
   onClearAll: () => void;
-  onPlaceAdded: () => void;
-  onPlacesChange: (places: Place[]) => void;
+  onPlaceAdded: () => Promise<void>;
+  onPlaceCreated: (place: Place) => void;
+  onPlaceRemoved: (id: string) => void;
+  onPlaceNoteChanged: (id: string, note: string | null) => void;
   selectedCount: number;
   onOpenShare: () => void;
   onSignOut: () => void;
@@ -36,7 +38,7 @@ interface Props {
 
 export default function TabNavigator({
   places, selectedIds, sessionId,
-  onToggleSelect, onClearAll, onPlaceAdded, onPlacesChange,
+  onToggleSelect, onClearAll, onPlaceAdded, onPlaceCreated, onPlaceRemoved, onPlaceNoteChanged,
   selectedCount, onOpenShare, onSignOut, onOpenSettings, avatarUrl, userName,
 }: Props) {
   const [focusedPlace, setFocusedPlace] = useState<Place | null>(null);
@@ -110,7 +112,9 @@ export default function TabNavigator({
               sessionId={sessionId}
               onToggleSelect={onToggleSelect}
               onClearAll={onClearAll}
-              onPlaceAdded={onPlaceAdded}
+              onPlaceCreated={onPlaceCreated}
+              onPlaceRemoved={onPlaceRemoved}
+              onPlaceNoteChanged={onPlaceNoteChanged}
               focusedPlace={focusedPlace}
               onClearFocus={() => setFocusedPlace(null)}
               shareSelectMode={shareSelectMode}
@@ -135,8 +139,7 @@ export default function TabNavigator({
               places={places}
               selectedIds={selectedIds}
               onToggleSelect={onToggleSelect}
-              sessionId={sessionId}
-              onPlacesChange={onPlacesChange}
+              onPlaceRemoved={onPlaceRemoved}
               onRefresh={onPlaceAdded}
               onFocusPlace={setFocusedPlace}
             />

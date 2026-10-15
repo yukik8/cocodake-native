@@ -5,8 +5,7 @@ import {
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import type { Place } from '../types';
-
-const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
+import { API_URL, createShare } from '../lib/api';
 
 interface Props {
   visible: boolean;
@@ -25,20 +24,10 @@ export default function ShareModal({ visible, selectedPlaces, onClose }: Props) 
     if (selectedPlaces.length === 0) return;
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/share`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          place_ids: selectedPlaces.map((p) => p.id),
-          title: title || undefined,
-          expires_in_days: expiresIn,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) { Alert.alert('エラー', data.error); return; }
-      setShareUrl(`${API_URL}/share/${data.share.id}`);
-    } catch {
-      Alert.alert('エラー', '通信エラーが発生しました');
+      const share = await createShare(selectedPlaces.map((p) => p.id), title || undefined, expiresIn);
+      setShareUrl(`${API_URL}/share/${share.id}`);
+    } catch (e) {
+      Alert.alert('エラー', e instanceof Error ? e.message : '通信エラーが発生しました');
     } finally {
       setLoading(false);
     }

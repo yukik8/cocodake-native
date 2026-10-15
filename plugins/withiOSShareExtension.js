@@ -172,15 +172,20 @@ class ShareViewController: UIViewController {
       showLoginRequired()
       return
     }
+    // トークンはアプリが App Group に書き込む。無ければアプリを開いたときに追加する
+    guard let token = defaults?.string(forKey: "accessToken"), !token.isEmpty else {
+      saveForLater(trimmedUrl)
+      return
+    }
     showLoading()
-    callAddPlace(url: trimmedUrl, userId: userId, apiUrl: apiUrl)
+    callAddPlace(url: trimmedUrl, token: token, apiUrl: apiUrl)
   }
 
   @objc private func didTapCancel() {
     complete()
   }
 
-  private func callAddPlace(url: String, userId: String, apiUrl: String) {
+  private func callAddPlace(url: String, token: String, apiUrl: String) {
     guard let endpoint = URL(string: "\\(apiUrl)/api/places/add") else {
       showApiError("APIのURLが無効です")
       return
@@ -188,8 +193,9 @@ class ShareViewController: UIViewController {
     var req = URLRequest(url: endpoint)
     req.httpMethod = "POST"
     req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    req.setValue("Bearer \\(token)", forHTTPHeaderField: "Authorization")
     req.timeoutInterval = 15
-    var body: [String: String] = ["url": url, "session": userId]
+    var body: [String: String] = ["url": url]
     if let placeId = extractPlaceId(from: url) { body["place_id"] = placeId }
     req.httpBody = try? JSONSerialization.data(withJSONObject: body)
     URLSession.shared.dataTask(with: req) { [weak self] data, response, error in
@@ -199,6 +205,9 @@ class ShareViewController: UIViewController {
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if status == 409 {
           self.showAlreadyExists()
+        } else if status == 401 {
+          // トークンの期限切れ。アプリを開いたときに新しいトークンで追加する
+          self.saveForLater(url)
         } else if (200..<300).contains(status) {
           self.showAdded()
         } else {
@@ -230,6 +239,34 @@ class ShareViewController: UIViewController {
       label.centerXAnchor.constraint(equalTo: view.centerXAnchor),
     ])
     DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in self?.complete() }
+  }
+
+  // アプリが次に前面に来たとき（getAndClearPendingUrl）に追加されるよう URL を預ける
+  private func saveForLater(_ url: String) {
+    let defaults = UserDefaults(suiteName: appGroupId)
+    defaults?.set(url, forKey: "pendingShareUrl")
+    defaults?.synchronize()
+    showSavedForLater()
+  }
+
+  private func showSavedForLater() {
+    view.subviews.forEach { $0.removeFromSuperview() }
+    let label = makeLabel("cocodake を開くと追加されます", font: .systemFont(ofSize: 15, weight: .semibold), color: .label)
+    label.textAlignment = .center
+    label.numberOfLines = 2
+    let closeButton = makeRoundedButton("閉じる", background: .secondarySystemBackground, foreground: .label)
+    closeButton.addTarget(self, action: #selector(didTapCancel), for: .touchUpInside)
+    [label, closeButton].forEach { view.addSubview($0) }
+    NSLayoutConstraint.activate([
+      label.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+      label.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: -30),
+      label.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+      label.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+      closeButton.topAnchor.constraint(equalTo: label.bottomAnchor, constant: 24),
+      closeButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+      closeButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+      closeButton.heightAnchor.constraint(equalToConstant: 50),
+    ])
   }
 
   private func showAlreadyExists() {
@@ -359,13 +396,16 @@ class ShareViewController: UIViewController {
     }.resume()
   }
 
+  // アプリ（src/lib/placeId.ts）・Web と同じ規則:
+  // query_place_id= / place_id= / place_id: を優先し、なければ !1sChIJ…。!1s0x…:0x… は対象外
   private func extractPlaceId(from url: String) -> String? {
-    if let range = url.range(of: "!1s(ChIJ[^!]+)", options: .regularExpression) {
-      return String(url[range]).replacingOccurrences(of: "!1s", with: "")
-    }
-    if let range = url.range(of: "(?:q=place_id:|place_id=)(ChIJ[^&!/ ]+)", options: .regularExpression) {
-      let match = String(url[range])
-      return match.components(separatedBy: ":").last ?? match.components(separatedBy: "=").last
+    for pattern in [#"place_id[=:](ChIJ[A-Za-z0-9_-]+)"#, #"!1s(ChIJ[A-Za-z0-9_-]+)"#] {
+      guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+      let range = NSRange(url.startIndex..., in: url)
+      if let match = regex.firstMatch(in: url, range: range),
+         let idRange = Range(match.range(at: 1), in: url) {
+        return String(url[idRange])
+      }
     }
     return nil
   }
