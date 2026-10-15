@@ -16,10 +16,20 @@ public class ShareIntentModule: Module {
       return url
     }
 
-    AsyncFunction("setUserSession") { (userId: String, apiUrl: String) in
+    AsyncFunction("setUserSession") { (userId: String, apiUrl: String, accessToken: String) in
       guard let defaults = UserDefaults(suiteName: self.appGroupId) else { return }
       defaults.set(userId, forKey: "userId")
       defaults.set(apiUrl, forKey: "apiUrl")
+      defaults.set(accessToken, forKey: "accessToken")
+      defaults.synchronize()
+    }
+
+    AsyncFunction("clearUserSession") { () -> Void in
+      guard let defaults = UserDefaults(suiteName: self.appGroupId) else { return }
+      defaults.removeObject(forKey: "userId")
+      defaults.removeObject(forKey: "accessToken")
+      defaults.removeObject(forKey: "cachedPlaceIds")
+      defaults.removeObject(forKey: "cachedPlaceUrls")
       defaults.synchronize()
     }
 

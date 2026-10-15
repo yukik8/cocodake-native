@@ -5,9 +5,11 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
-import { addPlace } from '../lib/api';
+import { addPlace, importTakeoutFile, enrichPlaces, AuthError } from '../lib/api';
+import { mapWithConcurrency } from '../lib/concurrency';
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
+// 複数URLを同時に何件まで追加するか（サーバーと Google API に負荷をかけすぎない数）
+const URL_ADD_CONCURRENCY = 3;
 
 interface Props {
   sessionId: string;
@@ -21,7 +23,7 @@ export default function ImportScreen({ sessionId, onImportComplete }: Props) {
   const [progress, setProgress] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // URL追加（複数対応）
+  // URL追加（複数対応・最大3件ずつ並行）
   const handleAddUrl = async () => {
     const urls = url.split('\n').map(u => u.trim()).filter(u => u.length > 0);
     if (urls.length === 0 || !sessionId) return;
@@ -29,32 +31,26 @@ export default function ImportScreen({ sessionId, onImportComplete }: Props) {
     setMessage(null);
     setProgress(null);
 
-    let added = 0;
-    let alreadyExists = 0;
-    let errors = 0;
+    let done = 0;
+    if (urls.length > 1) setProgress(`0 / ${urls.length} 件処理中...`);
+    const results = await mapWithConcurrency(urls, URL_ADD_CONCURRENCY, async (u) => {
+      const result = await addPlace({ url: u });
+      done++;
+      if (urls.length > 1) setProgress(`${done} / ${urls.length} 件処理中...`);
+      return result;
+    });
 
-    for (let i = 0; i < urls.length; i++) {
-      if (urls.length > 1) setProgress(`${i + 1} / ${urls.length} 件処理中...`);
-      try {
-        const result = await addPlace({ url: urls[i], session: sessionId });
-        if (result.error === 'already_exists') {
-          alreadyExists++;
-        } else if (result.error) {
-          errors++;
-        } else {
-          added++;
-        }
-      } catch {
-        errors++;
-      }
-    }
+    const added = results.filter((r) => !r.error).length;
+    const alreadyExists = results.filter((r) => r.error === 'already_exists').length;
+    const unauthorized = results.find((r) => r.error === 'unauthorized');
+    const errors = results.length - added - alreadyExists;
 
     setProgress(null);
 
     const parts: string[] = [];
     if (added > 0) parts.push(`${added}件追加しました`);
     if (alreadyExists > 0) parts.push(`${alreadyExists}件はすでに登録済み`);
-    if (errors > 0) parts.push(`${errors}件エラー`);
+    if (errors > 0) parts.push(unauthorized?.message ?? `${errors}件エラー`);
 
     setMessage({
       type: errors === urls.length ? 'error' : 'success',
@@ -82,68 +78,43 @@ export default function ImportScreen({ sessionId, onImportComplete }: Props) {
       const asset = result.assets[0];
       setLoading(true);
       setMessage(null);
+      setProgress('ファイルを送信中...');
 
-      const formData = new FormData();
-      formData.append('file', {
-        uri: asset.uri,
-        name: asset.name,
-        type: asset.mimeType ?? 'application/octet-stream',
-      } as unknown as Blob);
-      formData.append('session', sessionId);
-
-      const res = await fetch(`${API_URL}/api/import`, {
-        method: 'POST',
-        headers: { 'X-Stream': 'true' },
-        body: formData,
-      });
-
-      if (!res.body) throw new Error('no response body');
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buf = '';
-      let imported = 0;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        const lines = buf.split('\n');
-        buf = lines.pop() ?? '';
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          const event = JSON.parse(line.slice(6));
+      let doneEvent: { imported: number; duplicates?: number; geocodeFailed?: number } | null = null;
+      await importTakeoutFile(
+        { uri: asset.uri, name: asset.name, type: asset.mimeType ?? 'application/octet-stream' },
+        (event) => {
           if (event.type === 'progress') {
             if (event.phase === 'parsing') setProgress('ファイルを解析中...');
             else if (event.phase === 'geocoding') setProgress(`座標を取得中... (${event.current} / ${event.total}件)`);
             else if (event.phase === 'saving') setProgress('データを保存中...');
           } else if (event.type === 'done') {
-            imported = event.imported;
-            setProgress(null);
-            const details: string[] = [];
-            if (event.duplicates > 0) details.push(`重複 ${event.duplicates}件スキップ`);
-            if (event.geocodeFailed > 0) details.push(`座標取得失敗 ${event.geocodeFailed}件`);
-            const suffix = details.length > 0 ? `（${details.join('、')}）` : '';
-            setMessage({ type: 'success', text: `${imported}件を取り込み中... 写真・評価を取得しています` });
-            onImportComplete();
-            try {
-              await fetch(`${API_URL}/api/enrich`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ session: sessionId, limit: 50 }),
-              });
-            } catch { /* 無視 */ }
-            setMessage({ type: 'success', text: `${imported}件を新規追加しました${suffix}` });
-            onImportComplete();
+            doneEvent = event;
           } else if (event.type === 'error') {
-            setProgress(null);
             setMessage({ type: 'error', text: event.message ?? 'インポートに失敗しました' });
           }
-        }
+        },
+      );
+
+      const finished = doneEvent as { imported: number; duplicates?: number; geocodeFailed?: number } | null;
+      if (finished) {
+        const details: string[] = [];
+        if ((finished.duplicates ?? 0) > 0) details.push(`重複 ${finished.duplicates}件スキップ`);
+        if ((finished.geocodeFailed ?? 0) > 0) details.push(`座標取得失敗 ${finished.geocodeFailed}件`);
+        const suffix = details.length > 0 ? `（${details.join('、')}）` : '';
+        setProgress(null);
+        setMessage({ type: 'success', text: `${finished.imported}件を取り込み中... 写真・評価を取得しています` });
+        onImportComplete();
+        try {
+          await enrichPlaces(50);
+        } catch { /* 無視 */ }
+        setMessage({ type: 'success', text: `${finished.imported}件を新規追加しました${suffix}` });
+        onImportComplete();
       }
     } catch (e) {
-      setMessage({ type: 'error', text: String(e) });
+      setMessage({ type: 'error', text: e instanceof AuthError ? e.message : String(e) });
     } finally {
+      setProgress(null);
       setLoading(false);
     }
   };
@@ -212,6 +183,10 @@ export default function ImportScreen({ sessionId, onImportComplete }: Props) {
               </>
             )}
           </TouchableOpacity>
+
+          {progress && (
+            <Text style={styles.progressText}>{progress}</Text>
+          )}
 
           <View style={styles.howTo}>
             <Text style={styles.howToTitle}>Google Takeoutの使い方</Text>

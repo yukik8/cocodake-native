@@ -9,12 +9,14 @@ import {
 import {
   Map, Camera, GeoJSONSource, Layer,
   type MapRef, type CameraRef, type PressEvent, type PressEventWithFeatures,
-  type ViewStateChangeEvent,
+  type ViewStateChangeEvent, type FilterSpecification,
 } from '@maplibre/maplibre-react-native';
 import * as Location from 'expo-location';
 import type { Place } from '../types';
 import { previewByCoords, previewByPlaceId, addPlace, searchPlaces, deletePlace, updateNote } from '../lib/api';
 import type { PreviewResult, SearchResult } from '../lib/api';
+import { placesInBounds, nextClusterRegion, type Bounds, type ClusterRegion } from '../lib/geo';
+import { resolvePhotoUrl } from '../lib/photo';
 import PlaceCard from '../components/PlaceCard';
 import Toast from '../components/Toast';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -25,13 +27,41 @@ const STYLE_URL = MAPTILER_KEY
   ? `https://api.maptiler.com/maps/streets-v2/style.json?key=${MAPTILER_KEY}`
   : 'https://demotiles.maplibre.org/style.json';
 
+const IS_CLUSTER: FilterSpecification = ['has', 'point_count'];
+const IS_PLACE: FilterSpecification = ['!', ['has', 'point_count']];
+const EMPTY_FC: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
+
+type PreviewState = PreviewResult & {
+  loading: boolean;
+  saving: boolean;
+  isExisting?: boolean;
+  existingId?: string;
+  note?: string | null;
+  // 座標がまだ分からない（検索候補の詳細を取得中）ときはピンを出さない
+  pinHidden?: boolean;
+};
+
+function previewFromPlace(place: Place): PreviewState {
+  return {
+    lat: place.lat, lng: place.lng,
+    name: place.name, address: place.address,
+    category: place.category, rating: place.rating,
+    photo_url: place.photo_url, place_id: place.place_id, url: place.url,
+    loading: false, saving: false,
+    isExisting: true, existingId: place.id,
+    note: place.note,
+  };
+}
+
 interface MapScreenProps {
   places: Place[];
   selectedIds: Set<string>;
   onToggleSelect: (id: string) => void;
   onClearAll: () => void;
   sessionId: string;
-  onPlaceAdded: () => void;
+  onPlaceCreated: (place: Place) => void;
+  onPlaceRemoved: (id: string) => void;
+  onPlaceNoteChanged: (id: string, note: string | null) => void;
   focusedPlace?: Place | null;
   onClearFocus?: () => void;
   shareSelectMode?: boolean;
@@ -44,7 +74,9 @@ export default function MapScreen({
   onToggleSelect,
   onClearAll,
   sessionId,
-  onPlaceAdded,
+  onPlaceCreated,
+  onPlaceRemoved,
+  onPlaceNoteChanged,
   focusedPlace,
   onClearFocus,
   shareSelectMode = false,
@@ -67,7 +99,7 @@ export default function MapScreen({
   }, []);
 
   // タッププレビュー
-  const [preview, setPreview] = useState<(PreviewResult & { loading: boolean; saving: boolean; isExisting?: boolean; existingId?: string; note?: string | null }) | null>(null);
+  const [preview, setPreview] = useState<PreviewState | null>(null);
 
   // リストからフォーカスされた場所へ飛ぶ
   useEffect(() => {
@@ -78,23 +110,13 @@ export default function MapScreen({
       duration: 600,
     });
     // 情報カードを表示（リスト済みなので追加ボタンは出さない）
-    setPreview({
-      lat: focusedPlace.lat,
-      lng: focusedPlace.lng,
-      name: focusedPlace.name,
-      address: focusedPlace.address,
-      category: focusedPlace.category,
-      rating: focusedPlace.rating,
-      photo_url: focusedPlace.photo_url,
-      place_id: null,
-      loading: false,
-      saving: false,
-      isExisting: true,
-      existingId: focusedPlace.id,
-      note: focusedPlace.note,
-    });
+    setPreview(previewFromPlace(focusedPlace));
     onClearFocus?.();
   }, [focusedPlace]);
+
+  // トースト
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const showToast = (msg: string) => setToastMsg(msg);
 
   // リスト済み場所の削除
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
@@ -108,27 +130,23 @@ export default function MapScreen({
     if (!preview?.existingId) return;
     const id = preview.existingId;
     setDeleteConfirmVisible(false);
-    await deletePlace(id, sessionId);
-    setPreview(null);
-    onPlaceAdded();
-  }, [preview, sessionId, onPlaceAdded]);
-
-  // トースト
-  const [toastMsg, setToastMsg] = useState<string | null>(null);
-  const showToast = (msg: string) => setToastMsg(msg);
+    try {
+      await deletePlace(id);
+      setPreview(null);
+      onPlaceRemoved(id);
+    } catch (e) {
+      setToastMsg(e instanceof Error ? e.message : '削除に失敗しました');
+    }
+  }, [preview, onPlaceRemoved]);
 
   // エリア選択モード
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectionCount, setSelectionCount] = useState(0);
 
-  const countInBounds = useCallback(async () => {
-    const bounds = await mapRef.current?.getBounds();
+  const countInBounds = useCallback(async (known?: Bounds) => {
+    const bounds = known ?? await mapRef.current?.getBounds();
     if (!bounds) return;
-    const [west, south, east, north] = bounds;
-    const count = places.filter(
-      (p) => p.lng >= west && p.lng <= east && p.lat >= south && p.lat <= north
-    ).length;
-    setSelectionCount(count);
+    setSelectionCount(placesInBounds(places, bounds as Bounds).length);
   }, [places]);
 
   const handleEnterSelectionMode = useCallback(() => {
@@ -140,9 +158,7 @@ export default function MapScreen({
   const handleConfirmSelection = useCallback(async () => {
     const bounds = await mapRef.current?.getBounds();
     if (!bounds) return;
-    const [west, south, east, north] = bounds;
-    places
-      .filter((p) => p.lng >= west && p.lng <= east && p.lat >= south && p.lat <= north)
+    placesInBounds(places, bounds as Bounds)
       .forEach((p) => { if (!selectedIds.has(p.id)) onToggleSelect(p.id); });
     setSelectionMode(false);
   }, [places, selectedIds, onToggleSelect]);
@@ -195,32 +211,54 @@ export default function MapScreen({
         }
       } catch { /* POI名取得失敗は無視 */ }
 
+      // 座標プレビューは place_id と詳細（写真・評価など）まで1回で返す
       const data = await previewByCoords(lat, lng, poiName);
-      if (data.place_id) {
-        const existing = places.find((p) => p.place_id === data.place_id);
-        if (existing) {
-          setPreview({
-            lat: existing.lat, lng: existing.lng,
-            name: existing.name, address: existing.address,
-            category: existing.category, rating: existing.rating,
-            photo_url: existing.photo_url, place_id: existing.place_id, url: existing.url,
-            loading: false, saving: false,
-            isExisting: true, existingId: existing.id,
-            note: existing.note,
-          });
-          return;
-        }
-        setPreview((p) => p ? { ...p, name: data.name, address: data.address, place_id: data.place_id, loading: true } : null);
-        const details = await previewByPlaceId(data.place_id);
-        setPreview((p) => p ? { ...p, ...details, loading: false } : null);
-      } else {
-        setPreview((p) => p ? { ...p, ...data, loading: false } : null);
+      const existing = data.place_id ? places.find((p) => p.place_id === data.place_id) : undefined;
+      if (existing) {
+        setPreview(previewFromPlace(existing));
+        return;
       }
-    } catch (e) {
+      setPreview((p) => p ? { ...p, ...data, loading: false } : null);
+    } catch {
       // エラー時もピンの位置だけ表示する
       setPreview((p) => p ? { ...p, loading: false } : null);
     }
+  }, [places]);
+
+  // Supercluster（10件以上でのみクラスター化）。索引は places が変わったときだけ作る。
+  // 選択状態は索引に入れず、レイヤーの式（selectedIdList）で色を変える
+  const sc = useMemo(() => {
+    const index = new Supercluster({ radius: 60, maxZoom: 16, minPoints: 10 });
+    index.load(places.map((p) => ({
+      type: 'Feature' as const,
+      geometry: { type: 'Point' as const, coordinates: [p.lng, p.lat] },
+      properties: { id: p.id, name: p.name ?? '' },
+    })));
+    return index;
+  }, [places]);
+
+  // クラスターを計算した範囲（表示範囲より広め）。この範囲内のパンでは計算し直さない
+  const [clusterRegion, setClusterRegion] = useState<ClusterRegion | null>(null);
+  const clusterRegionRef = useRef<ClusterRegion | null>(null);
+
+  const updateClusterRegion = useCallback((bounds: Bounds, zoom: number) => {
+    const next = nextClusterRegion(clusterRegionRef.current, bounds, zoom);
+    if (!next) return;
+    clusterRegionRef.current = next;
+    setClusterRegion(next);
   }, []);
+
+  // 最初の表示範囲が分かるまではピンを送らない（全件を未クラスターで送ると重い）
+  const geojson: GeoJSON.FeatureCollection = useMemo(() => {
+    if (!clusterRegion) return EMPTY_FC;
+    return {
+      type: 'FeatureCollection',
+      features: sc.getClusters(clusterRegion.bounds, clusterRegion.zoom) as GeoJSON.Feature[],
+    };
+  }, [sc, clusterRegion]);
+
+  const selectedIdList = useMemo(() => ['literal', Array.from(selectedIds)], [selectedIds]);
+  const isSelectedExpr = useMemo(() => ['in', ['get', 'id'], selectedIdList], [selectedIdList]);
 
   // ピンタップ → クラスターなら拡大、個別ピンなら選択トグル
   const handlePinPress = useCallback(async (
@@ -253,16 +291,8 @@ export default function MapScreen({
 
     const place = places.find((p) => p.id === id);
     if (!place) return;
-    setPreview({
-      lat: place.lat, lng: place.lng,
-      name: place.name, address: place.address,
-      category: place.category, rating: place.rating,
-      photo_url: place.photo_url, place_id: place.place_id, url: place.url,
-      loading: false, saving: false,
-      isExisting: true, existingId: place.id,
-      note: place.note,
-    });
-  }, [onToggleSelect, shareSelectMode, places]);
+    setPreview(previewFromPlace(place));
+  }, [onToggleSelect, shareSelectMode, places, sc]);
 
   // 検索
   const handleSearch = useCallback((q: string) => {
@@ -285,31 +315,41 @@ export default function MapScreen({
     Keyboard.dismiss();
     setSearchQuery('');
     setSearchResults([]);
-    cameraRef.current?.flyTo({
-      center: [result.lng, result.lat],
-      zoom: 16,
-      duration: 500,
-    });
-    const existing = places.find((p) => p.place_id === result.id);
+    const flyTo = (lng: number, lat: number) =>
+      cameraRef.current?.flyTo({ center: [lng, lat], zoom: 16, duration: 500 });
+
+    const existing = result.place_id ? places.find((p) => p.place_id === result.place_id) : undefined;
     if (existing) {
       // リスト済み → 削除ボタン付きカードを表示
-      setPreview({
-        lat: existing.lat, lng: existing.lng,
-        name: existing.name, address: existing.address,
-        category: existing.category, rating: existing.rating,
-        photo_url: existing.photo_url, place_id: existing.place_id, url: existing.url,
-        loading: false, saving: false,
-        isExisting: true, existingId: existing.id,
-        note: existing.note,
-      });
+      flyTo(existing.lng, existing.lat);
+      setPreview(previewFromPlace(existing));
       return;
     }
-    setPreview({ lat: result.lat, lng: result.lng, name: result.name, address: result.address, category: null, rating: null, photo_url: null, place_id: result.id, loading: true, saving: false });
+
+    if (result.lat != null && result.lng != null) {
+      // MapTiler / Nominatim の候補は座標があるので先に移動し、座標＋名前で詳細を取る
+      const { lat, lng } = result;
+      flyTo(lng, lat);
+      setPreview({ lat, lng, name: result.name, address: result.address, category: null, rating: null, photo_url: null, place_id: null, loading: true, saving: false });
+      try {
+        const data = await previewByCoords(lat, lng, result.name);
+        setPreview((p) => p ? { ...p, ...data, name: data.name ?? result.name, address: data.address ?? result.address, loading: false } : null);
+      } catch {
+        setPreview((p) => p ? { ...p, loading: false } : null);
+      }
+      return;
+    }
+
+    if (!result.place_id) return;
+    // Google の候補は座標がないので、詳細（座標を含む）が届いてから移動する
+    setPreview({ lat: 0, lng: 0, name: result.name, address: result.address, category: null, rating: null, photo_url: null, place_id: result.place_id, loading: true, saving: false, pinHidden: true });
     try {
-      const details = await previewByPlaceId(result.id);
-      setPreview((p) => p ? { ...p, ...details, loading: false } : null);
+      const details = await previewByPlaceId(result.place_id);
+      flyTo(details.lng, details.lat);
+      setPreview((p) => p ? { ...p, ...details, loading: false, pinHidden: false } : null);
     } catch {
-      setPreview((p) => p ? { ...p, loading: false } : null);
+      setPreview(null);
+      setToastMsg('スポットの情報を取得できませんでした');
     }
   }, [places]);
 
@@ -318,7 +358,6 @@ export default function MapScreen({
     if (!preview || !sessionId) return { error: 'no preview' };
     setPreview((p) => p ? { ...p, saving: true } : null);
     const result = await addPlace({
-      session: sessionId,
       lat: preview.lat,
       lng: preview.lng,
       place_id: preview.place_id ?? undefined,
@@ -333,12 +372,12 @@ export default function MapScreen({
       return { error: 'already_exists' };
     } else if (result.error) {
       setPreview((p) => p ? { ...p, saving: false } : null);
-      return { error: result.error };
+      return { error: result.message ?? result.error };
     }
     setPreview(null);
-    onPlaceAdded();
-    return { id: result.place?.id, name: result.place?.name };
-  }, [preview, sessionId, onPlaceAdded]);
+    if (result.place) onPlaceCreated(result.place);
+    return { id: result.place?.id, name: result.place?.name ?? undefined };
+  }, [preview, sessionId, onPlaceCreated]);
 
   // リストに追加のみ
   const handleSave = useCallback(async () => {
@@ -365,36 +404,6 @@ export default function MapScreen({
     }
   }, [doSave, onToggleSelect]);
 
-  // Supercluster（10件以上でのみクラスター化）
-  const sc = useMemo(() => {
-    const index = new Supercluster({ radius: 60, maxZoom: 16, minPoints: 10 });
-    index.load(places.map((p) => ({
-      type: 'Feature' as const,
-      geometry: { type: 'Point' as const, coordinates: [p.lng, p.lat] },
-      properties: { id: p.id, name: p.name ?? '', selected: selectedIds.has(p.id) },
-    })));
-    return index;
-  }, [places, selectedIds]);
-
-  const [mapRegion, setMapRegion] = useState<{ zoom: number; bounds: [number, number, number, number] } | null>(null);
-
-  const geojson: GeoJSON.FeatureCollection = useMemo(() => {
-    if (!mapRegion) {
-      return {
-        type: 'FeatureCollection',
-        features: places.map((p) => ({
-          type: 'Feature' as const,
-          id: p.id,
-          geometry: { type: 'Point' as const, coordinates: [p.lng, p.lat] },
-          properties: { id: p.id, name: p.name ?? '', selected: selectedIds.has(p.id) },
-        })),
-      };
-    }
-    return {
-      type: 'FeatureCollection',
-      features: sc.getClusters(mapRegion.bounds, Math.floor(mapRegion.zoom)) as GeoJSON.Feature[],
-    };
-  }, [sc, mapRegion, places, selectedIds]);
 
   return (
     <View style={styles.container}>
@@ -403,14 +412,16 @@ export default function MapScreen({
         style={styles.map}
         mapStyle={STYLE_URL}
         onPress={selectionMode ? undefined : handleMapPress}
-        onRegionDidChange={async (e) => {
-          Keyboard.dismiss();
-          if (selectionMode) { countInBounds(); return; }
+        onDidFinishLoadingMap={async () => {
           const bounds = await mapRef.current?.getBounds();
           const zoom = await mapRef.current?.getZoom();
-          if (bounds && zoom != null) {
-            setMapRegion({ zoom, bounds: [bounds[0], bounds[1], bounds[2], bounds[3]] });
-          }
+          if (bounds && zoom != null) updateClusterRegion(bounds as Bounds, zoom);
+        }}
+        onRegionDidChange={(e: NativeSyntheticEvent<ViewStateChangeEvent>) => {
+          Keyboard.dismiss();
+          const { bounds, zoom } = e.nativeEvent;
+          if (selectionMode) { countInBounds(bounds as Bounds); return; }
+          updateClusterRegion(bounds as Bounds, zoom);
         }}
       >
         <Camera
@@ -419,7 +430,7 @@ export default function MapScreen({
         />
 
         {/* プレビューピン（タップ/検索で選択中の場所） */}
-        {preview && (
+        {preview && !preview.pinHidden && (
           <GeoJSONSource
             id="preview-pin"
             data={{
@@ -450,7 +461,7 @@ export default function MapScreen({
           <Layer
             id="cluster-circles"
             type="circle"
-            filter={['has', 'point_count'] as unknown as string}
+            filter={IS_CLUSTER}
             paint={{
               'circle-color': '#3b82f6',
               'circle-radius': ['step', ['get', 'point_count'], 20, 30, 26, 100, 32] as unknown as number,
@@ -461,7 +472,7 @@ export default function MapScreen({
           <Layer
             id="cluster-count"
             type="symbol"
-            filter={['has', 'point_count'] as unknown as string}
+            filter={IS_CLUSTER}
             layout={{
               'text-field': ['get', 'point_count_abbreviated'] as unknown as string,
               'text-size': 12,
@@ -475,10 +486,10 @@ export default function MapScreen({
           <Layer
             id="place-circles"
             type="circle"
-            filter={['!', ['has', 'point_count']] as unknown as string}
+            filter={IS_PLACE}
             paint={{
               'circle-radius': 8,
-              'circle-color': ['case', ['get', 'selected'], '#10b981', '#ef4444'] as unknown as string,
+              'circle-color': ['case', isSelectedExpr, '#10b981', '#ef4444'] as unknown as string,
               'circle-stroke-width': 2,
               'circle-stroke-color': '#ffffff',
             }}
@@ -486,7 +497,7 @@ export default function MapScreen({
           <Layer
             id="place-labels"
             type="symbol"
-            filter={['!', ['has', 'point_count']] as unknown as string}
+            filter={IS_PLACE}
             layout={{
               'text-field': ['get', 'name'] as unknown as string,
               'text-size': 12,
@@ -497,7 +508,7 @@ export default function MapScreen({
             paint={{
               'text-halo-color': '#ffffff',
               'text-halo-width': 2,
-              'text-color': ['case', ['get', 'selected'], '#059669', '#dc2626'] as unknown as string,
+              'text-color': ['case', isSelectedExpr, '#059669', '#dc2626'] as unknown as string,
             }}
           />
         </GeoJSONSource>
@@ -634,8 +645,13 @@ export default function MapScreen({
           onDelete={preview.existingId ? handleDeleteExisting : undefined}
           hasSelection={selectedIds.size > 0}
           onNoteChange={preview.existingId ? async (note) => {
-            await updateNote(preview.existingId!, note, sessionId);
-            onPlaceAdded();
+            const id = preview.existingId!;
+            try {
+              await updateNote(id, note);
+              onPlaceNoteChanged(id, note);
+            } catch (e) {
+              setToastMsg(e instanceof Error ? e.message : 'メモの保存に失敗しました');
+            }
           } : undefined}
           onAddToShare={preview.existingId ? () => {
             onToggleSelect(preview.existingId!);
@@ -687,7 +703,7 @@ export default function MapScreen({
                   })}
                 >
                   {p.photo_url ? (
-                    <Image source={{ uri: p.photo_url }} style={styles.trayPhoto} />
+                    <Image source={{ uri: resolvePhotoUrl(p.photo_url) ?? undefined }} style={styles.trayPhoto} />
                   ) : (
                     <View style={styles.trayPhotoPlaceholder}>
                       <Text style={styles.trayPhotoEmoji}>📍</Text>

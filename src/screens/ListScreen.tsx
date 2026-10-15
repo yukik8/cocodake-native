@@ -1,7 +1,7 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo, memo } from 'react';
 import {
   View, Text, TextInput, FlatList, TouchableOpacity,
-  Image, StyleSheet, RefreshControl,
+  Image, StyleSheet, RefreshControl, Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -10,20 +10,19 @@ import type { TabParamList } from '../navigation/TabNavigator';
 import type { Place } from '../types';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { deletePlace } from '../lib/api';
+import { filterAndSortPlaces, type SortKey } from '../lib/listing';
+import { resolvePhotoUrl } from '../lib/photo';
 
 interface Props {
   places: Place[];
   selectedIds: Set<string>;
   onToggleSelect: (id: string) => void;
-  sessionId: string;
-  onPlacesChange: (places: Place[]) => void;
+  onPlaceRemoved: (id: string) => void;
   onRefresh: () => Promise<void>;
   onFocusPlace: (place: Place) => void;
 }
 
-type SortKey = 'recent' | 'name' | 'rating';
-
-export default function ListScreen({ places, selectedIds, onToggleSelect, sessionId, onPlacesChange, onRefresh, onFocusPlace }: Props) {
+export default function ListScreen({ places, selectedIds, onToggleSelect, onPlaceRemoved, onRefresh, onFocusPlace }: Props) {
   const navigation = useNavigation<BottomTabNavigationProp<TabParamList>>();
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState<SortKey>('recent');
@@ -36,21 +35,8 @@ export default function ListScreen({ places, selectedIds, onToggleSelect, sessio
     setRefreshing(false);
   }, [onRefresh]);
 
-  const displayed = places
-    .filter((p) => {
-      if (!search) return true;
-      const q = search.toLowerCase();
-      return (
-        p.name?.toLowerCase().includes(q) ||
-        p.category?.toLowerCase().includes(q) ||
-        p.address?.toLowerCase().includes(q)
-      );
-    })
-    .sort((a, b) => {
-      if (sortBy === 'name') return (a.name ?? '').localeCompare(b.name ?? '');
-      if (sortBy === 'rating') return (b.rating ?? 0) - (a.rating ?? 0);
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-    });
+  // 検索・並び替えは places / 検索語 / 並び順が変わったときだけ計算する
+  const displayed = useMemo(() => filterAndSortPlaces(places, search, sortBy), [places, search, sortBy]);
 
   const handleDelete = useCallback((id: string) => {
     setPendingDeleteId(id);
@@ -60,9 +46,18 @@ export default function ListScreen({ places, selectedIds, onToggleSelect, sessio
     if (!pendingDeleteId) return;
     const id = pendingDeleteId;
     setPendingDeleteId(null);
-    await deletePlace(id, sessionId);
-    onPlacesChange(places.filter((p) => p.id !== id));
-  }, [pendingDeleteId, sessionId, places, onPlacesChange]);
+    try {
+      await deletePlace(id);
+      onPlaceRemoved(id);
+    } catch (e) {
+      Alert.alert('エラー', e instanceof Error ? e.message : '削除に失敗しました');
+    }
+  }, [pendingDeleteId, onPlaceRemoved]);
+
+  const handleFocus = useCallback((place: Place) => {
+    onFocusPlace(place);
+    navigation.navigate('Map');
+  }, [onFocusPlace, navigation]);
 
   return (
     <View style={styles.container}>
@@ -101,6 +96,7 @@ export default function ListScreen({ places, selectedIds, onToggleSelect, sessio
       {/* リスト */}
       <FlatList
         data={displayed}
+        extraData={selectedIds}
         keyExtractor={(p) => p.id}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#2563eb" />
@@ -109,12 +105,9 @@ export default function ListScreen({ places, selectedIds, onToggleSelect, sessio
           <PlaceRow
             place={item}
             isSelected={selectedIds.has(item.id)}
-            onToggle={() => onToggleSelect(item.id)}
-            onDelete={() => handleDelete(item.id)}
-            onFocus={() => {
-              onFocusPlace(item);
-              navigation.navigate('Map');
-            }}
+            onToggle={onToggleSelect}
+            onDelete={handleDelete}
+            onFocus={handleFocus}
           />
         )}
         ListEmptyComponent={
@@ -129,31 +122,33 @@ export default function ListScreen({ places, selectedIds, onToggleSelect, sessio
   );
 }
 
-function PlaceRow({
+// 行は props が変わったときだけ描き直す（コールバックは id / place を受け取る安定した関数）
+const PlaceRow = memo(function PlaceRow({
   place, isSelected, onToggle, onDelete, onFocus,
 }: {
   place: Place;
   isSelected: boolean;
-  onToggle: () => void;
-  onDelete: () => void;
-  onFocus: () => void;
+  onToggle: (id: string) => void;
+  onDelete: (id: string) => void;
+  onFocus: (place: Place) => void;
 }) {
+  const photoUri = resolvePhotoUrl(place.photo_url);
   return (
     <View style={[styles.row, isSelected && styles.rowSelected]}>
       {/* チェックボックスだけ選択トグル */}
       <TouchableOpacity
         style={[styles.checkbox, isSelected && styles.checkboxChecked]}
-        onPress={onToggle}
+        onPress={() => onToggle(place.id)}
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       >
         {isSelected && <Text style={styles.checkmark}>✓</Text>}
       </TouchableOpacity>
 
       {/* それ以外を押すとマップへ */}
-      <TouchableOpacity style={styles.rowContent} onPress={onFocus} activeOpacity={0.7}>
+      <TouchableOpacity style={styles.rowContent} onPress={() => onFocus(place)} activeOpacity={0.7}>
         {/* 写真 */}
-        {place.photo_url ? (
-          <Image source={{ uri: place.photo_url }} style={styles.photo} />
+        {photoUri ? (
+          <Image source={{ uri: photoUri }} style={styles.photo} />
         ) : (
           <View style={styles.photoPlaceholder}>
             <Ionicons name="location" size={22} color="#9ca3af" />
@@ -182,12 +177,12 @@ function PlaceRow({
       </TouchableOpacity>
 
       {/* 削除 */}
-      <TouchableOpacity onPress={onDelete} style={styles.deleteBtn} hitSlop={8}>
+      <TouchableOpacity onPress={() => onDelete(place.id)} style={styles.deleteBtn} hitSlop={8}>
         <Ionicons name="trash-outline" size={18} color="#9ca3af" />
       </TouchableOpacity>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },

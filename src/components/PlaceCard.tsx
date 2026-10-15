@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { PreviewResult } from '../lib/api';
+import { resolvePhotoUrl } from '../lib/photo';
 
 interface Props {
   preview: PreviewResult & { loading: boolean; saving: boolean; note?: string | null };
@@ -23,6 +24,7 @@ export default function PlaceCard({ preview, onSave, onSaveAndShare, onClose, is
   const [editingNote, setEditingNote] = useState(false);
   const [noteText, setNoteText] = useState(preview.note ?? '');
   const bottomAnim = useRef(new Animated.Value(24)).current;
+  const photoUri = resolvePhotoUrl(preview.photo_url);
 
   useEffect(() => {
     const show = Keyboard.addListener('keyboardWillShow', (e: KeyboardEvent) => {
@@ -57,8 +59,8 @@ export default function PlaceCard({ preview, onSave, onSaveAndShare, onClose, is
       ) : (
         <>
           <View style={styles.infoRow}>
-            {preview.photo_url ? (
-              <Image source={{ uri: preview.photo_url }} style={styles.photo} />
+            {photoUri ? (
+              <Image source={{ uri: photoUri }} style={styles.photo} />
             ) : (
               <View style={styles.photoPlaceholder}>
                 <Ionicons name="location" size={28} color="#9ca3af" />
