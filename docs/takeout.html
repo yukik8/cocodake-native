@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Google マップの保存済みスポットを取り込む - cocodake</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", sans-serif;
+      background: #fafafa;
+      color: #111827;
+      line-height: 1.7;
+    }
+    header {
+      background: #fff;
+      border-bottom: 1px solid #f3f4f6;
+      padding: 20px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    header a { display: flex; align-items: center; gap: 12px; color: inherit; text-decoration: none; }
+    .logo {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .logo img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    header h1 {
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+    }
+    header span {
+      font-size: 13px;
+      color: #6b7280;
+      margin-left: 4px;
+      font-weight: 400;
+    }
+    main {
+      max-width: 640px;
+      margin: 40px auto;
+      padding: 0 24px 80px;
+    }
+    h2 {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+    .lead {
+      font-size: 14px;
+      color: #4b5563;
+      margin-bottom: 24px;
+    }
+    .card {
+      background: #fff;
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+    .card h3 {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .step {
+      flex-shrink: 0;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: #fff7ed;
+      color: #f97316;
+      font-size: 13px;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .card p, .card li {
+      font-size: 14px;
+      color: #4b5563;
+    }
+    .card ul { padding-left: 18px; }
+    .card img {
+      display: block;
+      width: 100%;
+      height: auto;
+      margin-top: 14px;
+      border-radius: 10px;
+      border: 1px solid #e5e7eb;
+    }
+    a { color: #f97316; }
+    .button {
+      display: inline-block;
+      margin-top: 14px;
+      background: #f97316;
+      color: #fff;
+      text-decoration: none;
+      padding: 12px 24px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .section { margin-bottom: 40px; }
+    footer {
+      text-align: center;
+      font-size: 12px;
+      color: #9ca3af;
+      padding: 24px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <a href="./">
+      <div class="logo"><img src="icon.png" alt="cocodake" /></div>
+      <h1>cocodake <span>サポート</span></h1>
+    </a>
+  </header>
+
+  <main>
+    <div class="section">
+      <h2>Google マップの保存済みスポットを取り込む</h2>
+      <p class="lead">Google マップで保存したスポット（「行ってみたい」「お気に入り」などのリスト）は、Google Takeout で書き出したファイルを使って、cocodake にまとめて取り込めます。</p>
+
+      <div class="card">
+        <h3><span class="step">1</span>Google Takeout を開く</h3>
+        <p>Google アカウントでログインした状態で開いてください。</p>
+        <a class="button" href="https://takeout.google.com/" target="_blank" rel="noopener">takeout.google.com を開く</a>
+      </div>
+
+      <div class="card">
+        <h3><span class="step">2</span>「選択をすべて解除」を押す</h3>
+        <p>最初はすべてのデータが選択されています。まず選択をすべて外します。</p>
+        <img src="images/takeout-deselect-all.jpg" width="981" height="622" alt="Google データ エクスポートの画面。「選択をすべて解除」が赤枠で囲まれている" />
+      </div>
+
+      <div class="card">
+        <h3><span class="step">3</span>「Saved」だけにチェックを入れる</h3>
+        <p>一覧を下にスクロールし、「Saved」にチェックを入れます。選択中が「1/◯件」になっていれば大丈夫です。</p>
+        <img src="images/takeout-select-saved.jpg" width="980" height="769" alt="「Saved」にだけチェックが入り、1 件を選択中になっている画面" />
+      </div>
+
+      <div class="card">
+        <h3><span class="step">4</span>エクスポートを作成する</h3>
+        <p>画面下の「次のステップ」に進み、設定はそのままで「エクスポートを作成」を押します。準備ができると、ダウンロード用のリンクがメールで届きます（数分から数時間かかることがあります）。</p>
+      </div>
+
+      <div class="card">
+        <h3><span class="step">5</span>ダウンロードして解凍する</h3>
+        <p>メールのリンクから zip ファイルをダウンロードして、解凍します。iPhone では「ファイル」アプリで zip をタップすると解凍できます。</p>
+      </div>
+
+      <div class="card">
+        <h3><span class="step">6</span>cocodake で読み込む</h3>
+        <ul>
+          <li>アプリ: 「追加」タブ →「Takeoutファイル」→「ファイルを選択」</li>
+          <li>Web: 「追加・インポート」→ ファイルをドロップ</li>
+        </ul>
+        <p style="margin-top:8px;">解凍したフォルダの中にある、リストごとの CSV（例:「行ってみたい.csv」）または JSON を選びます。</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>よくある質問</h2>
+
+      <div class="card">
+        <h3>同じファイルをもう一度取り込んでも大丈夫？</h3>
+        <p>大丈夫です。すでにリストにある場所は追加されず、「重複 ◯件スキップ」と表示されます。</p>
+      </div>
+
+      <div class="card">
+        <h3>「座標取得失敗」と出た</h3>
+        <p>ファイルに位置情報がない場所は、名前から Google マップで場所を探します。見つからなかった場所は取り込まれず、その件数が「座標取得失敗」として表示されます。</p>
+      </div>
+
+      <div class="card">
+        <h3>取り込みに時間がかかる</h3>
+        <p>位置情報のない場所が多いと、場所を探すのに時間がかかります。完了するまで画面を開いたままお待ちください。</p>
+      </div>
+    </div>
+
+    <p style="font-size:14px;"><a href="./">← サポートページに戻る</a></p>
+  </main>
+
+  <footer>
+    &copy; 2026 cocodake
+  </footer>
+</body>
+</html>
