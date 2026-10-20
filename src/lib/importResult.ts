@@ -1,4 +1,4 @@
-import type { ImportEvent } from './api';
+import type { ImportEvent, NotFoundPlace } from './api';
 
 export type ImportDone = Extract<ImportEvent, { type: 'done' }>;
 
@@ -13,4 +13,14 @@ export function importResultMessage(done: ImportDone): string {
   const added = done.imported > 0 ? `${done.imported}件を新規追加しました` : '新規追加はありませんでした';
   const prefix = typeof done.parsed === 'number' ? `ファイル内 ${done.parsed}件中${done.imported > 0 ? ' ' : '、'}` : '';
   return `${prefix}${added}${suffix}`;
+}
+
+// 見つからなかったスポット。リンクから1件ずつ追加してもらう。サーバーが送るのは最大100件で、
+// 残りは more に数える。リンクは http(s) のものだけ残す
+export function notFoundPlaces(done: ImportDone): { places: NotFoundPlace[]; more: number } {
+  const places = (done.notFound ?? []).map((p) => ({
+    name: p.name,
+    url: p.url && /^https?:\/\//i.test(p.url) ? p.url : null,
+  }));
+  return { places, more: Math.max(0, (done.geocodeFailed ?? 0) - places.length) };
 }

@@ -8,7 +8,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as WebBrowser from 'expo-web-browser';
 import { addPlace, importTakeoutFile, enrichPlaces, AuthError } from '../lib/api';
 import { mapWithConcurrency } from '../lib/concurrency';
-import { importResultMessage, type ImportDone } from '../lib/importResult';
+import { importResultMessage, notFoundPlaces, type ImportDone } from '../lib/importResult';
 
 const TAKEOUT_URL = 'https://takeout.google.com/';
 // 画像つきの手順（GitHub Pages、docs/takeout.html）。Google の画面が変わってもアプリの更新なしで直せる
@@ -28,7 +28,11 @@ export default function ImportScreen({ sessionId, onImportComplete }: Props) {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
   // info: 新規追加が1件もなかったとき（全部が登録済み・重複など）。成功の緑やエラーの赤にはしない
-  const [message, setMessage] = useState<{ type: 'success' | 'info' | 'error'; text: string } | null>(null);
+  const [message, setMessage] = useState<{
+    type: 'success' | 'info' | 'error';
+    text: string;
+    notFound?: ReturnType<typeof notFoundPlaces>;
+  } | null>(null);
 
   // URL追加（複数対応・最大3件ずつ並行）
   const handleAddUrl = async () => {
@@ -114,7 +118,11 @@ export default function ImportScreen({ sessionId, onImportComplete }: Props) {
             await enrichPlaces(50);
           } catch { /* 無視 */ }
         }
-        setMessage({ type: finished.imported > 0 ? 'success' : 'info', text: importResultMessage(finished) });
+        setMessage({
+          type: finished.imported > 0 ? 'success' : 'info',
+          text: importResultMessage(finished),
+          notFound: notFoundPlaces(finished),
+        });
         onImportComplete();
       }
     } catch (e) {
@@ -225,6 +233,24 @@ export default function ImportScreen({ sessionId, onImportComplete }: Props) {
           </Text>
         </View>
       )}
+      {message?.notFound && message.notFound.places.length > 0 && (
+        <View style={styles.notFound}>
+          <Text style={styles.notFoundTitle}>見つからなかったスポット</Text>
+          <Text style={styles.notFoundHint}>
+            Googleマップで開いて「共有」からリンクをコピーし、「URL直接追加」に貼ると追加できることがあります
+          </Text>
+          {message.notFound.places.map((p, i) =>
+            p.url ? (
+              <Text key={i} style={[styles.notFoundItem, styles.link]} onPress={() => Linking.openURL(p.url!)} accessibilityRole="link">
+                {p.name}
+              </Text>
+            ) : (
+              <Text key={i} style={styles.notFoundItem}>{p.name}</Text>
+            ),
+          )}
+          {message.notFound.more > 0 && <Text style={styles.notFoundHint}>ほか {message.notFound.more}件</Text>}
+        </View>
+      )}
     </ScrollView>
   );
 }
@@ -291,6 +317,10 @@ fileBtnTitle: { fontSize: 15, fontWeight: '600', color: '#374151' },
   msgInfo: { backgroundColor: '#f3f4f6', borderWidth: 1, borderColor: '#d1d5db' },
   msgError: { backgroundColor: '#fef2f2', borderWidth: 1, borderColor: '#fca5a5' },
   msgText: { fontSize: 13 },
+  notFound: { marginHorizontal: 16, marginBottom: 16, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: '#e5e7eb' },
+  notFoundTitle: { fontSize: 13, fontWeight: '700', color: '#374151' },
+  notFoundHint: { fontSize: 12, color: '#6b7280', marginTop: 4, lineHeight: 18 },
+  notFoundItem: { fontSize: 13, marginTop: 6 },
   msgTextSuccess: { color: '#166534' },
   msgTextInfo: { color: '#374151' },
   msgTextError: { color: '#991b1b' },

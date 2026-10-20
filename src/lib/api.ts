@@ -165,10 +165,23 @@ export async function createShare(placeIds: string[], title: string | undefined,
   return data.share;
 }
 
+export interface NotFoundPlace {
+  name: string;
+  url: string | null;
+}
+
 export type ImportEvent =
   | { type: 'progress'; phase: 'geocoding'; current: number; total: number }
   | { type: 'progress'; phase: 'parsing' | 'saving' }
-  | { type: 'done'; imported: number; parsed?: number; geocodeFailed?: number; duplicates?: number }
+  | {
+      type: 'done';
+      imported: number;
+      parsed?: number;
+      geocodeFailed?: number;
+      duplicates?: number;
+      // 見つからなかったスポット（最大100件）。旧サーバーは送らない
+      notFound?: NotFoundPlace[];
+    }
   | { type: 'error'; message: string };
 
 // Takeout ファイルを取り込む。進捗は Server-Sent Events で届く。
