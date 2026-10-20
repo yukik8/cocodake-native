@@ -27,7 +27,8 @@ export default function ImportScreen({ sessionId, onImportComplete }: Props) {
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  // info: 新規追加が1件もなかったとき（全部が登録済み・重複など）。成功の緑やエラーの赤にはしない
+  const [message, setMessage] = useState<{ type: 'success' | 'info' | 'error'; text: string } | null>(null);
 
   // URL追加（複数対応・最大3件ずつ並行）
   const handleAddUrl = async () => {
@@ -59,7 +60,7 @@ export default function ImportScreen({ sessionId, onImportComplete }: Props) {
     if (errors > 0) parts.push(unauthorized?.message ?? `${errors}件エラー`);
 
     setMessage({
-      type: errors === urls.length ? 'error' : 'success',
+      type: errors === urls.length ? 'error' : added > 0 ? 'success' : 'info',
       text: parts.join('、'),
     });
 
@@ -113,7 +114,7 @@ export default function ImportScreen({ sessionId, onImportComplete }: Props) {
             await enrichPlaces(50);
           } catch { /* 無視 */ }
         }
-        setMessage({ type: 'success', text: importResultMessage(finished) });
+        setMessage({ type: finished.imported > 0 ? 'success' : 'info', text: importResultMessage(finished) });
         onImportComplete();
       }
     } catch (e) {
@@ -218,8 +219,8 @@ export default function ImportScreen({ sessionId, onImportComplete }: Props) {
 
       {/* メッセージ */}
       {message && (
-        <View style={[styles.msg, message.type === 'success' ? styles.msgSuccess : styles.msgError]}>
-          <Text style={[styles.msgText, message.type === 'success' ? styles.msgTextSuccess : styles.msgTextError]}>
+        <View style={[styles.msg, MSG_BOX[message.type]]}>
+          <Text style={[styles.msgText, MSG_TEXT[message.type]]}>
             {message.text}
           </Text>
         </View>
@@ -287,8 +288,13 @@ fileBtnTitle: { fontSize: 15, fontWeight: '600', color: '#374151' },
   progressText: { fontSize: 13, color: '#6b7280', textAlign: 'center' },
   msg: { margin: 16, padding: 12, borderRadius: 10 },
   msgSuccess: { backgroundColor: '#f0fdf4', borderWidth: 1, borderColor: '#86efac' },
+  msgInfo: { backgroundColor: '#f3f4f6', borderWidth: 1, borderColor: '#d1d5db' },
   msgError: { backgroundColor: '#fef2f2', borderWidth: 1, borderColor: '#fca5a5' },
   msgText: { fontSize: 13 },
   msgTextSuccess: { color: '#166534' },
+  msgTextInfo: { color: '#374151' },
   msgTextError: { color: '#991b1b' },
 });
+
+const MSG_BOX = { success: styles.msgSuccess, info: styles.msgInfo, error: styles.msgError };
+const MSG_TEXT = { success: styles.msgTextSuccess, info: styles.msgTextInfo, error: styles.msgTextError };
