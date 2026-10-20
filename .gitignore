@@ -54,3 +54,6 @@ credentials.json
 # generated native folders
 /ios
 /android
+
+# Gradle output of the local Expo module
+modules/*/android/build/
