@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import { addPlace, importTakeoutFile, enrichPlaces, AuthError } from '../lib/api';
 import { mapWithConcurrency } from '../lib/concurrency';
+import { importResultMessage, type ImportDone } from '../lib/importResult';
 
 // 複数URLを同時に何件まで追加するか（サーバーと Google API に負荷をかけすぎない数）
 const URL_ADD_CONCURRENCY = 3;
@@ -80,7 +81,7 @@ export default function ImportScreen({ sessionId, onImportComplete }: Props) {
       setMessage(null);
       setProgress('ファイルを送信中...');
 
-      let doneEvent: { imported: number; duplicates?: number; geocodeFailed?: number } | null = null;
+      let doneEvent: ImportDone | null = null;
       await importTakeoutFile(
         { uri: asset.uri, name: asset.name, type: asset.mimeType ?? 'application/octet-stream' },
         (event) => {
@@ -96,19 +97,15 @@ export default function ImportScreen({ sessionId, onImportComplete }: Props) {
         },
       );
 
-      const finished = doneEvent as { imported: number; duplicates?: number; geocodeFailed?: number } | null;
+      const finished = doneEvent as ImportDone | null;
       if (finished) {
-        const details: string[] = [];
-        if ((finished.duplicates ?? 0) > 0) details.push(`重複 ${finished.duplicates}件スキップ`);
-        if ((finished.geocodeFailed ?? 0) > 0) details.push(`座標取得失敗 ${finished.geocodeFailed}件`);
-        const suffix = details.length > 0 ? `（${details.join('、')}）` : '';
         setProgress(null);
         setMessage({ type: 'success', text: `${finished.imported}件を取り込み中... 写真・評価を取得しています` });
         onImportComplete();
         try {
           await enrichPlaces(50);
         } catch { /* 無視 */ }
-        setMessage({ type: 'success', text: `${finished.imported}件を新規追加しました${suffix}` });
+        setMessage({ type: 'success', text: importResultMessage(finished) });
         onImportComplete();
       }
     } catch (e) {
