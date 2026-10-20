@@ -457,31 +457,6 @@ export default function MapScreen({
 
         {/* ピン */}
         <GeoJSONSource id="places" data={geojson} onPress={handlePinPress}>
-          {/* クラスター円（Superclusterが10件以上を集約） */}
-          <Layer
-            id="cluster-circles"
-            type="circle"
-            filter={IS_CLUSTER}
-            paint={{
-              'circle-color': '#3b82f6',
-              'circle-radius': ['step', ['get', 'point_count'], 20, 30, 26, 100, 32] as unknown as number,
-              'circle-stroke-width': 2,
-              'circle-stroke-color': '#ffffff',
-            }}
-          />
-          <Layer
-            id="cluster-count"
-            type="symbol"
-            filter={IS_CLUSTER}
-            layout={{
-              'text-field': ['get', 'point_count_abbreviated'] as unknown as string,
-              'text-size': 12,
-              'text-font': ['Open Sans Bold'],
-            }}
-            paint={{
-              'text-color': '#ffffff',
-            }}
-          />
           {/* 個別ピン */}
           <Layer
             id="place-circles"
@@ -509,6 +484,35 @@ export default function MapScreen({
               'text-halo-color': '#ffffff',
               'text-halo-width': 2,
               'text-color': ['case', isSelectedExpr, '#059669', '#dc2626'] as unknown as string,
+            }}
+          />
+          {/* クラスター円（Superclusterが10件以上を集約）。店名より上に描いて、件数が隠れないようにする */}
+          <Layer
+            id="cluster-circles"
+            type="circle"
+            filter={IS_CLUSTER}
+            paint={{
+              'circle-color': '#3b82f6',
+              'circle-radius': ['step', ['get', 'point_count'], 20, 30, 26, 100, 32] as unknown as number,
+              'circle-stroke-width': 2,
+              'circle-stroke-color': '#ffffff',
+            }}
+          />
+          <Layer
+            id="cluster-count"
+            type="symbol"
+            filter={IS_CLUSTER}
+            layout={{
+              'text-field': ['get', 'point_count_abbreviated'] as unknown as string,
+              'text-size': 12,
+              'text-font': ['Open Sans Bold'],
+              // the count always shows on its circle (place names used to hide it when they
+              // collided) and doesn't push other labels away
+              'text-allow-overlap': true,
+              'text-ignore-placement': true,
+            }}
+            paint={{
+              'text-color': '#ffffff',
             }}
           />
         </GeoJSONSource>
