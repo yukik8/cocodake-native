@@ -10,8 +10,14 @@ describe('importResultMessage', () => {
   it('leaves out skip reasons that did not happen', () => {
     expect(importResultMessage({ type: 'done', imported: 5, parsed: 5, duplicates: 0, geocodeFailed: 0 }))
       .toBe('ファイル内 5件中 5件を新規追加しました');
+  });
+
+  it('says nothing was added instead of "0件を新規追加しました"', () => {
     expect(importResultMessage({ type: 'done', imported: 0, parsed: 3, duplicates: 3, geocodeFailed: 0 }))
-      .toBe('ファイル内 3件中 0件を新規追加しました（重複 3件スキップ）');
+      .toBe('ファイル内 3件中、新規追加はありませんでした（重複 3件スキップ）');
+    expect(importResultMessage({ type: 'done', imported: 0, parsed: 4, duplicates: 3, geocodeFailed: 1 }))
+      .toBe('ファイル内 4件中、新規追加はありませんでした（重複 3件スキップ、座標取得失敗 1件）');
+    expect(importResultMessage({ type: 'done', imported: 0 })).toBe('新規追加はありませんでした');
   });
 
   it('falls back to the added count when an older server sends only that', () => {

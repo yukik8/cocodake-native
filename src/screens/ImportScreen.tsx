@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, Alert, ActivityIndicator, ScrollView, Linking,
@@ -27,17 +27,6 @@ export default function ImportScreen({ sessionId, onImportComplete }: Props) {
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
-  // 取り込みを始めた時刻。経過秒数を1秒ごとに出して、止まっていないことが分かるようにする
-  const [startedAt, setStartedAt] = useState<number | null>(null);
-  const [, setTick] = useState(0);
-
-  useEffect(() => {
-    if (startedAt == null) return;
-    const id = setInterval(() => setTick((t) => t + 1), 1000);
-    return () => clearInterval(id);
-  }, [startedAt]);
-
-  const elapsedSec = startedAt != null ? Math.floor((Date.now() - startedAt) / 1000) : 0;
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // URL追加（複数対応・最大3件ずつ並行）
@@ -96,7 +85,6 @@ export default function ImportScreen({ sessionId, onImportComplete }: Props) {
       setLoading(true);
       setMessage(null);
       setProgress('ファイルを送信中...');
-      setStartedAt(Date.now());
 
       let doneEvent: ImportDone | null = null;
       await importTakeoutFile(
@@ -117,11 +105,14 @@ export default function ImportScreen({ sessionId, onImportComplete }: Props) {
       const finished = doneEvent as ImportDone | null;
       if (finished) {
         setProgress(null);
-        setMessage({ type: 'success', text: `${finished.imported}件を取り込み中... 写真・評価を取得しています` });
-        onImportComplete();
-        try {
-          await enrichPlaces(50);
-        } catch { /* 無視 */ }
+        // 1件も追加されなかったときは、写真・評価を取りに行くものがない
+        if (finished.imported > 0) {
+          setMessage({ type: 'success', text: `${finished.imported}件を取り込み中... 写真・評価を取得しています` });
+          onImportComplete();
+          try {
+            await enrichPlaces(50);
+          } catch { /* 無視 */ }
+        }
         setMessage({ type: 'success', text: importResultMessage(finished) });
         onImportComplete();
       }
@@ -129,7 +120,6 @@ export default function ImportScreen({ sessionId, onImportComplete }: Props) {
       setMessage({ type: 'error', text: e instanceof AuthError ? e.message : String(e) });
     } finally {
       setProgress(null);
-      setStartedAt(null);
       setLoading(false);
     }
   };
@@ -177,10 +167,7 @@ export default function ImportScreen({ sessionId, onImportComplete }: Props) {
             }
           </TouchableOpacity>
           {progress && (
-            <Text style={styles.progressText}>
-              {progress}
-              {startedAt != null ? `（${elapsedSec}秒経過）` : ''}
-            </Text>
+            <Text style={styles.progressText}>{progress}</Text>
           )}
         </View>
       ) : (
@@ -203,10 +190,7 @@ export default function ImportScreen({ sessionId, onImportComplete }: Props) {
           </TouchableOpacity>
 
           {progress && (
-            <Text style={styles.progressText}>
-              {progress}
-              {startedAt != null ? `（${elapsedSec}秒経過）` : ''}
-            </Text>
+            <Text style={styles.progressText}>{progress}</Text>
           )}
 
           <View style={styles.howTo}>
