@@ -62,7 +62,8 @@
           "iCloudContainerEnvironment": "Production"
         }
       ],
-      "./plugins/withIOSResourceBundleFix"
+      "./plugins/withIOSResourceBundleFix",
+      "expo-font"
     ],
     "extra": {
       "eas": {

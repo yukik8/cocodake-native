@@ -15,5 +15,7 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      # native module versions must match the Expo SDK, or the app crashes on launch
+      - run: npx expo install --check
       - run: npm run typecheck
       - run: npm test

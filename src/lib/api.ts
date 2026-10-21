@@ -1,7 +1,7 @@
 import { Place } from '../types';
 import { supabase } from './supabase';
 import { API_URL } from './config';
-import { parseSseLines, parseSseEvents } from './sse';
+import { createSseTextConsumer } from './sse';
 
 export { API_URL };
 
@@ -13,12 +13,17 @@ export class AuthError extends Error {
   }
 }
 
-// すべての API 呼び出しに Supabase のアクセストークンを付ける。
-// サーバーはトークンからユーザーを判定し、session パラメータは見ない。
-async function apiFetch(path: string, options: RequestInit = {}): Promise<Response> {
+async function accessToken(): Promise<string> {
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
   if (!token) throw new AuthError();
+  return token;
+}
+
+// すべての API 呼び出しに Supabase のアクセストークンを付ける。
+// サーバーはトークンからユーザーを判定し、session パラメータは見ない。
+async function apiFetch(path: string, options: RequestInit = {}): Promise<Response> {
+  const token = await accessToken();
   const headers: Record<string, string> = {
     ...(options.headers as Record<string, string> | undefined),
     Authorization: `Bearer ${token}`,
@@ -160,50 +165,72 @@ export async function createShare(placeIds: string[], title: string | undefined,
   return data.share;
 }
 
+export interface NotFoundPlace {
+  name: string;
+  url: string | null;
+}
+
 export type ImportEvent =
   | { type: 'progress'; phase: 'geocoding'; current: number; total: number }
   | { type: 'progress'; phase: 'parsing' | 'saving' }
-  | { type: 'done'; imported: number; parsed?: number; geocodeFailed?: number; duplicates?: number }
+  | {
+      type: 'done';
+      imported: number;
+      parsed?: number;
+      geocodeFailed?: number;
+      duplicates?: number;
+      // 見つからなかったスポット（最大100件）。旧サーバーは送らない
+      notFound?: NotFoundPlace[];
+    }
   | { type: 'error'; message: string };
 
 // Takeout ファイルを取り込む。進捗は Server-Sent Events で届く。
-// React Native の fetch はレスポンス本文をストリームで読めないので、
-// その場合は全文を受け取ってからまとめてイベントを処理する。
+// React Native の fetch は応答を最後まで受け取ってから渡すので、進捗のイベントが最後に
+// まとめて届いてしまう。XMLHttpRequest は届いた分ずつ onprogress で渡すので、
+// 「n / 全体」がその場で更新される
 export async function importTakeoutFile(
   file: { uri: string; name: string; type: string },
   onEvent: (event: ImportEvent) => void,
 ): Promise<void> {
+  const token = await accessToken();
   const formData = new FormData();
   formData.append('file', file as unknown as Blob);
+  const consumer = createSseTextConsumer();
 
-  const res = await apiFetch('/api/import', {
-    method: 'POST',
-    headers: { 'X-Stream': 'true' },
-    body: formData,
+  await new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${API_URL}/api/import`);
+    xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    xhr.setRequestHeader('X-Stream', 'true');
+
+    const isStream = () => xhr.status === 200 && (xhr.getResponseHeader('content-type') ?? '').includes('text/event-stream');
+    const deliver = () => {
+      if (!isStream()) return;
+      for (const e of consumer.push(xhr.responseText ?? '')) onEvent(e as ImportEvent);
+    };
+
+    xhr.onprogress = deliver;
+    xhr.onload = () => {
+      if (xhr.status === 401) {
+        reject(new AuthError());
+        return;
+      }
+      if (!isStream()) {
+        let message = `インポートに失敗しました (${xhr.status})`;
+        try {
+          message = (JSON.parse(xhr.responseText) as { error?: string }).error ?? message;
+        } catch { /* JSON でない応答 */ }
+        onEvent({ type: 'error', message });
+        resolve();
+        return;
+      }
+      deliver();
+      for (const e of consumer.end()) onEvent(e as ImportEvent);
+      resolve();
+    };
+    xhr.onerror = () => reject(new Error('通信エラーが発生しました'));
+    xhr.send(formData);
   });
-
-  if (!res.ok || !(res.headers.get('content-type') ?? '').includes('text/event-stream')) {
-    onEvent({ type: 'error', message: await errorMessage(res, 'インポートに失敗しました') });
-    return;
-  }
-
-  const reader = res.body?.getReader?.();
-  if (!reader) {
-    for (const e of parseSseEvents(await res.text())) onEvent(e as ImportEvent);
-    return;
-  }
-
-  const decoder = new TextDecoder();
-  let buf = '';
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += decoder.decode(value, { stream: true });
-    const lines = buf.split('\n');
-    buf = lines.pop() ?? '';
-    for (const e of parseSseLines(lines)) onEvent(e as ImportEvent);
-  }
-  for (const e of parseSseEvents(buf)) onEvent(e as ImportEvent);
 }
 
 export async function enrichPlaces(limit = 50): Promise<void> {

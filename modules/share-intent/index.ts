@@ -1,27 +1,31 @@
-import { requireNativeModule } from 'expo-modules-core';
+import { requireOptionalNativeModule } from 'expo-modules-core';
 
 interface ShareIntentNativeModule {
-  getAndClearPendingUrl(): Promise<string | null>;
-  setUserSession(userId: string, apiUrl: string, accessToken: string): Promise<void>;
-  clearUserSession(): Promise<void>;
-  setPlaceData(ids: string[], urls: string[]): Promise<void>;
+  getAndClearPendingUrl?(): Promise<string | null>;
+  setUserSession?(userId: string, apiUrl: string, accessToken: string): Promise<void>;
+  clearUserSession?(): Promise<void>;
+  setPlaceData?(ids: string[], urls: string[]): Promise<void>;
 }
 
-const ShareIntent = requireNativeModule<ShareIntentNativeModule>('ShareIntent');
+// null where the native module isn't built in (Expo Go, or a build without it), so the app
+// still starts instead of throwing at import time. Android implements only
+// getAndClearPendingUrl: its share intent hands the URL to the app, which adds the place
+// itself, so there is no session or place cache to keep on that side.
+const ShareIntent = requireOptionalNativeModule<ShareIntentNativeModule>('ShareIntent');
 
 export async function getPendingShareUrl(): Promise<string | null> {
-  return ShareIntent.getAndClearPendingUrl();
+  return (await ShareIntent?.getAndClearPendingUrl?.()) ?? null;
 }
 
 // Share Extension が API を呼べるように、ユーザーID・APIのURL・アクセストークンを App Group に置く
 export async function setUserSession(userId: string, apiUrl: string, accessToken: string): Promise<void> {
-  return ShareIntent.setUserSession(userId, apiUrl, accessToken);
+  await ShareIntent?.setUserSession?.(userId, apiUrl, accessToken);
 }
 
 export async function clearUserSession(): Promise<void> {
-  return ShareIntent.clearUserSession();
+  await ShareIntent?.clearUserSession?.();
 }
 
 export async function setPlaceData(ids: string[], urls: string[]): Promise<void> {
-  return ShareIntent.setPlaceData(ids, urls);
+  await ShareIntent?.setPlaceData?.(ids, urls);
 }
