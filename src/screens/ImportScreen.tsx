@@ -9,6 +9,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { addPlace, importTakeoutFile, enrichPlaces, AuthError } from '../lib/api';
 import { mapWithConcurrency } from '../lib/concurrency';
 import { importResultMessage, notFoundPlaces, type ImportDone } from '../lib/importResult';
+import { checkImportFileName } from '../lib/importFileCheck';
 
 const TAKEOUT_URL = 'https://takeout.google.com/';
 // 画像つきの手順（GitHub Pages、docs/takeout.html）。Google の画面が変わってもアプリの更新なしで直せる
@@ -87,6 +88,12 @@ export default function ImportScreen({ sessionId, onImportComplete }: Props) {
       if (result.canceled) return;
 
       const asset = result.assets[0];
+      // zip や画像などは、アップロードする前にその場で理由を出す
+      const problem = checkImportFileName(asset.name, asset.size ?? 0);
+      if (problem) {
+        setMessage({ type: 'error', text: problem });
+        return;
+      }
       setLoading(true);
       setMessage(null);
       setProgress('ファイルを送信中...');
