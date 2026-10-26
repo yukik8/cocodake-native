@@ -2,6 +2,7 @@ import { Place } from '../types';
 import { supabase } from './supabase';
 import { API_URL } from './config';
 import { createSseTextConsumer } from './sse';
+import { IMPORT_FILE_ERRORS } from './importFileCheck';
 
 export { API_URL };
 
@@ -216,9 +217,11 @@ export async function importTakeoutFile(
         return;
       }
       if (!isStream()) {
-        let message = `インポートに失敗しました (${xhr.status})`;
+        // Vercel 自体が返す 413（4.5MB 超え）は JSON でない
+        let message = xhr.status === 413 ? IMPORT_FILE_ERRORS.tooLarge : `インポートに失敗しました (${xhr.status})`;
         try {
-          message = (JSON.parse(xhr.responseText) as { error?: string }).error ?? message;
+          const body = JSON.parse(xhr.responseText) as { error?: unknown };
+          if (typeof body.error === 'string') message = body.error;
         } catch { /* JSON でない応答 */ }
         onEvent({ type: 'error', message });
         resolve();

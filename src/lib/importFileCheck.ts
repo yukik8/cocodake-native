@@ -1,10 +1,11 @@
 // 取り込むファイルの問題を、アップロードする前に名前とサイズだけで見つける。
 // 文言はサーバー（cocodake の src/lib/importFileCheck.ts）と同じ。中身の確認はサーバーが行う
 
-export const IMPORT_MAX_BYTES = 10 * 1024 * 1024;
+// サーバー（Vercel）は 4.5MB を超えるリクエストを受け付けないので、それより下にそろえる
+export const IMPORT_MAX_BYTES = 4 * 1024 * 1024;
 
 export const IMPORT_FILE_ERRORS = {
-  tooLarge: 'ファイルが大きすぎます（10MBまで）',
+  tooLarge: 'ファイルが大きすぎます（4MBまで）',
   zip: 'zipファイルのままです。解凍して、中のCSV（例:「行ってみたい.csv」）かJSONを選んでください',
   unsupported: '対応していないファイル形式です。Google TakeoutのCSVかJSONを選んでください',
 } as const;
